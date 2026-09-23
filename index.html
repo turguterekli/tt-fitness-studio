@@ -1742,6 +1742,31 @@
   const db = firebase.firestore();
   let cloudReady = false;
 
+  // Firestore, bir dizinin içine doğrudan başka bir dizi konulmasına izin vermiyor
+  // (örn. antrenman sıralaması gibi "dizi içinde dizi" yapılar). Buluta yazmadan önce
+  // bu iç dizileri { __arr: [...] } şeklinde sarıp güvenli hale getiriyoruz,
+  // okurken de aynı şekilde geri açıyoruz. Bu sayede hangi veri olursa olsun kayıt bozulmuyor.
+  function sanitizeForFirestore(value){
+    if(Array.isArray(value)){
+      return value.map(v => Array.isArray(v) ? { __arr: sanitizeForFirestore(v) } : sanitizeForFirestore(v));
+    } else if(value && typeof value === 'object'){
+      const out = {};
+      Object.keys(value).forEach(k => { out[k] = sanitizeForFirestore(value[k]); });
+      return out;
+    }
+    return value;
+  }
+  function desanitizeFromFirestore(value){
+    if(Array.isArray(value)){
+      return value.map(v => (v && typeof v === 'object' && '__arr' in v) ? desanitizeFromFirestore(v.__arr) : desanitizeFromFirestore(v));
+    } else if(value && typeof value === 'object'){
+      const out = {};
+      Object.keys(value).forEach(k => { out[k] = desanitizeFromFirestore(value[k]); });
+      return out;
+    }
+    return value;
+  }
+
   function hideCloudLoading(){
     const el = document.getElementById('cloudLoadingOverlay');
     if(el) el.style.display = 'none';
@@ -1816,7 +1841,7 @@
         });
       }
       if(packagesDoc.exists){
-        const cloudPkgs = packagesDoc.data() || {};
+        const cloudPkgs = desanitizeFromFirestore(packagesDoc.data() || {});
         Object.keys(memberPackages).forEach(k => delete memberPackages[k]);
         Object.assign(memberPackages, cloudPkgs);
       }
@@ -1860,7 +1885,7 @@
         [memberPrograms, 'memberPrograms', 'object'],
       ];
       if(appStateDoc.exists){
-        const cloudState = appStateDoc.data() || {};
+        const cloudState = desanitizeFromFirestore(appStateDoc.data() || {});
         appStateRefs.forEach(([ref, field, kind]) => {
           if(!(field in cloudState)) return;
           if(kind === 'array'){ ref.length = 0; ref.push(...(cloudState[field] || [])); }
@@ -1897,7 +1922,7 @@
           let ref;
           if(item._id){ ref = db.collection(collectionName).doc(item._id); }
           else { ref = db.collection(collectionName).doc(); item._id = ref.id; }
-          const data = { ...item };
+          const data = sanitizeForFirestore({ ...item });
           delete data._id;
           batch.set(ref, data, { merge: true });
         });
@@ -1915,7 +1940,7 @@
       if(json === lastJSON) return;
       lastJSON = json;
       showSaving();
-      try{ await db.doc(docPath).set(objRef); showSaved(); }
+      try{ await db.doc(docPath).set(sanitizeForFirestore(objRef)); showSaved(); }
       catch(err){ console.error(docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
     }, 1000);
   }
@@ -1937,7 +1962,7 @@
       try{
         const payload = {};
         refs.forEach(([ref, field]) => { payload[field] = ref; });
-        await db.collection('app_data').doc('appState').set(payload);
+        await db.collection('app_data').doc('appState').set(sanitizeForFirestore(payload));
         showSaved();
       }catch(err){ console.error('appState kaydedilemedi:', err); showSaveFailed(err.message); }
     }, 1000);
