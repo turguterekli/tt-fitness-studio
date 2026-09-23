@@ -8040,11 +8040,14 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
   };
 </script>
   <script>
-    // PWA: Service worker'ı kaydet (çevrimdışı çalışma ve daha hızlı açılış için)
+    // PWA: Service worker şimdilik KAPALI — geliştirme sürecinde tarayıcının eski sürümü
+    // önbellekten göstermesine sebep oluyordu. Uygulama tamamlanınca tekrar açacağız.
+    // Daha önce kaydolmuş eski bir service worker varsa onu da kaldırıyoruz.
     if('serviceWorker' in navigator){
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('service-worker.js').catch(() => {});
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(reg => reg.unregister());
       });
+      if(window.caches){ caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
     }
   </script>
 </body>
