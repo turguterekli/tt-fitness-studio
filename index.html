@@ -1738,6 +1738,7 @@
     appId: "1:246112140718:web:dcac0d734605bb77ed5c3f",
     measurementId: "G-VSX8BTC34M"
   };
+  console.log('%cTT FITNESS BUILD: 2026-09-24-v9', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   let cloudReady = false;
@@ -1937,14 +1938,16 @@
   // Tek bir bulut belgesinde tutulan sözlük/obje verileri için otomatik kayıt (örn. paket/ders hakları)
   function startAutosaveObject(objRef, docPath){
     let lastJSON = JSON.stringify(objRef);
+    console.log('[autosave] izlemeye başladı:', docPath, lastJSON);
     setInterval(async () => {
       if(!cloudReady) return;
       const json = JSON.stringify(objRef);
       if(json === lastJSON) return;
+      console.log('[autosave] değişiklik yakalandı, yazılıyor:', docPath, json);
       lastJSON = json;
       showSaving();
-      try{ await db.doc(docPath).set(sanitizeForFirestore(objRef)); showSaved(); }
-      catch(err){ console.error(docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
+      try{ await db.doc(docPath).set(sanitizeForFirestore(objRef)); console.log('[autosave] YAZILDI:', docPath); showSaved(); }
+      catch(err){ console.error('[autosave] ' + docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
     }, 1000);
   }
   // Onlarca farklı veri listesini (duyurular, ödemeler, mesajlar, notlar, sözleşmeler vb.)
