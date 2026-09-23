@@ -1163,28 +1163,7 @@
           <div id="editMemberRequests" style="margin-bottom:6px;"></div>
         </div>
 
-        <div class="section-title">Hızlı İşlemler</div>
-        <div class="card">
-          <div class="card-label">DERS HAKKI DÜZENLE</div>
-          <div style="display:flex; gap:8px; margin-bottom:8px;">
-            <input type="number" id="sessionAdjustAmount" class="calc-input" value="1" min="1" style="max-width:80px; min-width:0;">
-            <button class="btn btn-ghost" style="flex:1; font-size:12px;" onclick="adminUseSession()">– Düş</button>
-            <button class="btn btn-ghost" style="flex:1; font-size:12px;" onclick="adminRefundSession()">+ İade Et</button>
-          </div>
-          <label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:10px; cursor:pointer;">
-            <input type="checkbox" id="sessionAdjustPermanent" style="width:16px; height:16px; margin-top:1px; flex-shrink:0;">
-            <span style="font-size:11px; color:var(--muted);">İade kalıcı olsun (paketin toplam ders sayısını da artırıp bitiş tarihini uzatır — sadece "İade Et" için geçerli)</span>
-          </label>
-          <div id="renewPackageHint" style="font-size:11px; color:var(--muted); margin-bottom:8px;"></div>
-          <button class="btn btn-brass btn-full" style="margin-bottom:12px;" onclick="adminRenewPackage()">Aynı Programla Yenile</button>
-          <div style="display:flex; gap:8px;">
-            <select id="editMemberTrainer" class="calc-input" style="flex:1; min-width:0;">
-              <option>Turgut Terekli</option>
-              <option>Seray Atagan</option>
-            </select>
-            <button class="btn btn-ghost" onclick="adminChangeMemberTrainer()">Antrenörü Değiştir</button>
-          </div>
-        </div>
+        <div class="admin-sub" style="font-size:11px; margin-bottom:10px; text-align:center;">Ders hakkı düşme/ekleme, paket yenileme ve antrenör değiştirme artık "Üyeler" listesindeki üyenin kartından yapılıyor — kart üzerinde "🎫 Ders Hakkı" bölümünü aç.</div>
 
         <div class="card" style="padding:4px 14px;">
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; color:var(--chalk); font-size:13px; padding:14px 2px; cursor:pointer; text-align:left; font-family:var(--font-body);" onclick="toggleEditMemberSection('oneoff')"><span>Tek Seferlik Ekstra Ders Ekle</span><span id="editMemberArrow-oneoff" style="color:var(--muted); transition:transform .15s;">›</span></button>
@@ -1229,16 +1208,11 @@
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; color:var(--chalk); font-size:13px; padding:14px 2px; cursor:pointer; text-align:left; font-family:var(--font-body);" onclick="toggleEditMemberSection('advanced')"><span>Gelişmiş Ayarlar</span><span id="editMemberArrow-advanced" style="color:var(--muted); transition:transform .15s;">›</span></button>
           <div id="editMemberSection-advanced" style="display:none; padding-bottom:14px;">
             <div class="card-label">HAFTALIK GÜN LİMİTİNİ DEĞİŞTİR</div>
-            <div style="display:flex; gap:8px; margin-bottom:14px;">
+            <div style="display:flex; gap:8px;">
               <input type="number" id="editWeeklyLimitInput" class="calc-input" value="3" min="1" max="7" style="max-width:90px;">
               <button class="btn btn-ghost" style="flex:1;" onclick="adminChangeWeeklyLimit()">Haftalık Limiti Kaydet</button>
             </div>
-
-            <div class="card-label">ÜYELİK BİTİŞ TARİHİNİ DEĞİŞTİR</div>
-            <div style="display:flex; gap:8px;">
-              <input type="date" id="editEndDateInput" class="calc-input" style="max-width:100%; min-width:0;">
-              <button class="btn btn-ghost" style="flex:1;" onclick="adminChangeEndDate()">Bitiş Tarihini Kaydet</button>
-            </div>
+            <div style="font-size:10px; color:var(--muted); margin-top:8px;">Ders hakkı ve üyelik tarihi aralığını değiştirmek için "Üyeler" listesindeki kart üzerinden "🎫 Ders Hakkı" bölümünü kullan.</div>
           </div>
         </div>
         <div id="editMemberMsg" style="font-size:12px; color:var(--green); margin-top:4px; text-align:center;"></div>
@@ -7306,7 +7280,6 @@
       }
       consentsEl.innerHTML = rows;
     }
-    const endInput = document.getElementById('editEndDateInput');
     const weeklyInput = document.getElementById('editWeeklyLimitInput');
     if(pkg){
       const left = pkg.size - (pkg.used||0);
@@ -7594,18 +7567,6 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     renderMemberProfiles();
   }
 
-  function adminChangeMemberTrainer(){
-    const member = document.getElementById('editMember').value;
-    const newTrainer = document.getElementById('editMemberTrainer').value;
-    if(!memberPrograms[member] || !memberPrograms[member].length){
-      alert('Bu üyenin henüz bir programı yok, önce program atamalısın.');
-      return;
-    }
-    memberPrograms[member].forEach(s => { s.trainer = newTrainer; });
-    renderAssignedPrograms();
-    if(member === currentMemberName){ renderClasses(); renderHomeUpcoming(); renderFixedScheduleSummary(); }
-    document.getElementById('editMemberMsg').textContent = `${member} için antrenör ${newTrainer} olarak güncellendi.`;
-  }
   function adminSetMealTarget(){
     const member = document.getElementById('editMember').value;
     const val = parseInt(document.getElementById('editMealTargetInput').value, 10);
@@ -7614,29 +7575,6 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const msgEl = document.getElementById('editMemberMsg');
     if(msgEl) msgEl.textContent = `Günlük öğün hedefi ${memberMealTargets[member]} olarak kaydedildi.`;
     if(member === currentMemberName && typeof renderDailyChecklist === 'function') renderDailyChecklist();
-  }
-
-  function adminRenewPackage(){
-    const member = document.getElementById('editMember').value;
-    const prog = memberPrograms[member];
-    const msgEl = document.getElementById('editMemberMsg');
-    if(!prog || !prog.length){
-      msgEl.textContent = 'Önce bu üyeye bir program atamalısın.';
-      return;
-    }
-    const pkg = memberPackages[member];
-    const size = pkg ? pkg.size : 12;
-    // Yeni paket, eskisinin bittiği günün ERTESİ gününden başlar — aynı günü iki kez saymayalım
-    const startDate = pkg ? toLocalDateStr(new Date(new Date(pkg.end).getTime() + 86400000)) : toLocalDateStr(getNow());
-    // Yeni bitiş tarihini, aynı gün/saat düzenine göre hesapla
-    const days = prog.map(p => p.day);
-    const endDate = computeNthSessionDate(startDate, days, size);
-    memberPackages[member] = { size, start: startDate, end: endDate, used: 0 };
-    msgEl.textContent = `Paket yenilendi — ${formatDateTrLong(startDate)} - ${formatDateTrLong(endDate)}.`;
-    renderEditMemberStatus();
-    if(typeof renderMemberProfiles === 'function') renderMemberProfiles();
-    if(typeof renderAdminHome === 'function') renderAdminHome();
-    if(member === currentMemberName) renderMembership();
   }
 
   function renderMemberRequests(member){
@@ -7681,63 +7619,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     renderEditMemberStatus();
   }
 
-  // ---- Ders hakkını elle düşme / iade etme ----
-  function adminUseSession(){
-    const member = document.getElementById('editMember').value;
-    const amount = parseInt(document.getElementById('sessionAdjustAmount').value, 10) || 1;
-    customConfirm(`${member} için ${amount} ders hakkı düşülecek. Emin misin?`, (ok) => {
-      if(!ok) return;
-      if(memberPackages[member]){
-        memberPackages[member].used = Math.min(memberPackages[member].size, (memberPackages[member].used || 0) + amount);
-      } else {
-        memberPackages[member] = { size: 12, start: toLocalDateStr(getNow()), end: toLocalDateStr(addMonths(toLocalDateStr(getNow()), 1)), used: amount };
-      }
-      if(member === currentMemberName){
-        sessionsUsed = Math.min(sessionsTotal, sessionsUsed + amount);
-        renderMembership();
-      }
-      renderEditMemberStatus();
-      renderAssignedPrograms();
-      document.getElementById('editMemberMsg').textContent = `${member} için ${amount} ders hakkı düşüldü.`;
-    });
-  }
-  function adminRefundSession(){
-    const member = document.getElementById('editMember').value;
-    const amount = parseInt(document.getElementById('sessionAdjustAmount').value, 10) || 1;
-    const permanent = document.getElementById('sessionAdjustPermanent').checked;
-    if(permanent){
-      // Kalıcı: paketin toplam ders sayısını artır, bitiş tarihini uzat
-      if(adminTrainerScope){
-        customConfirm(`${member} için ${amount} ders kalıcı olarak eklenecek. Emin misin?`, (ok) => {
-          if(!ok) return;
-          pendingCreditRequests.push({ id: Date.now(), member, type: 'extra', amount, requestedBy: adminTrainerScope, date: toLocalDateStr(getNow()) });
-          renderPendingCreditRequests();
-          document.getElementById('editMemberMsg').textContent = `${member} için ${amount} kalıcı ders talebi Turgut'un onayına gönderildi.`;
-        });
-        return;
-      }
-      customConfirm(`${member} için ${amount} ders kalıcı olarak eklenecek (bitiş tarihi uzayacak). Emin misin?`, (ok) => {
-        if(!ok) return;
-        executeAddExtraSessions(member, amount);
-        document.getElementById('editMemberMsg').textContent = `${member} için ${amount} kalıcı ders eklendi, bitiş tarihi ${formatDateTrLong(memberPackages[member].end)} olarak güncellendi.`;
-      });
-      return;
-    }
-    if(adminTrainerScope){
-      customConfirm(`${member} için ${amount} ders hakkı iade talebi gönderilecek. Emin misin?`, (ok) => {
-        if(!ok) return;
-        pendingCreditRequests.push({ id: Date.now(), member, type: 'refund', amount, requestedBy: adminTrainerScope, date: toLocalDateStr(getNow()) });
-        renderPendingCreditRequests();
-        document.getElementById('editMemberMsg').textContent = `${member} için ${amount} ders hakkı iade talebi Turgut'un onayına gönderildi.`;
-      });
-      return;
-    }
-    customConfirm(`${member} için ${amount} ders hakkı iade edilecek. Emin misin?`, (ok) => {
-      if(!ok) return;
-      executeRefundSession(member, amount);
-      document.getElementById('editMemberMsg').textContent = `${member} için ${amount} ders hakkı iade edildi.`;
-    });
-  }
+  // ---- Ders hakkını elle düşme / iade etme (bkz. "Üyeler" kartındaki inline sürümler: adminUseSessionInline / adminRefundSessionInline) ----
   function executeRefundSession(member, amount){
     amount = amount || 1;
     if(memberPackages[member]){
@@ -7795,20 +7677,6 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     }
     renderEditMemberStatus();
     document.getElementById('editMemberMsg').textContent = `${member} için haftalık giriş limiti ${newLimit} gün olarak güncellendi.`;
-  }
-  function adminChangeEndDate(){
-    const member = document.getElementById('editMember').value;
-    const newEnd = document.getElementById('editEndDateInput').value;
-    if(!newEnd){ alert('Lütfen bir tarih seç.'); return; }
-    if(!memberPackages[member]){
-      memberPackages[member] = { size: 12, start: toLocalDateStr(getNow()), end: newEnd };
-    } else {
-      memberPackages[member].end = newEnd;
-    }
-    renderAssignedPrograms();
-    renderEditMemberStatus();
-    if(member === currentMemberName){ renderMembership(); }
-    document.getElementById('editMemberMsg').textContent = `${member} için üyelik bitiş tarihi ${formatDateTrLong(newEnd)} olarak güncellendi.`;
   }
   function renderMembershipDates(){
     const pkg = memberPackages[currentMemberName];
