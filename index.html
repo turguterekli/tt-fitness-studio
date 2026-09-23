@@ -1739,8 +1739,18 @@
         db.collection('trainers').get()
       ]);
       if(!membersSnap.empty){
+        // Firestore'da elle oluşturulmuş kayıtlarda eksik olabilecek sayısal/varsayılan alanları doldur,
+        // yoksa toplama işlemlerinde NaN görünür. Daha önce yanlışlıkla kaydedilmiş NaN değerlerini de onarır.
+        const memberNumericDefaults = { water:0, coffee:0, waterCredits:0, coffeeCredits:0 };
+        const memberDefaults = { ...memberNumericDefaults, status:"active", role:"member", group:null };
         members.length = 0;
-        membersSnap.forEach(doc => members.push({ ...doc.data(), _id: doc.id }));
+        membersSnap.forEach(doc => {
+          const m = { ...memberDefaults, ...doc.data(), _id: doc.id };
+          Object.keys(memberNumericDefaults).forEach(k => {
+            if(typeof m[k] !== 'number' || Number.isNaN(m[k])) m[k] = memberNumericDefaults[k];
+          });
+          members.push(m);
+        });
       }
       if(!trainersSnap.empty){
         // Bulut verisiyle mevcut kayıtları birleştir (renk/etiket gibi tasarım alanlarını koru,
