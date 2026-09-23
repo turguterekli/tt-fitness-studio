@@ -4344,6 +4344,18 @@
     }
 
     currentMemberName = found.name;
+    // Üye giriş yaptığında kendi ders hakkı/haftalık limit sayaçlarını gerçek kayıtlı verisinden yükle
+    // (sessionsTotal/sessionsUsed/weeklyLimit demo değişkenleri, giriş yapan üyenin gerçek verisiyle senkron olmalı).
+    const loginPkg = memberPackages[currentMemberName];
+    if(loginPkg){
+      sessionsTotal = loginPkg.unlimited ? 999 : loginPkg.size;
+      sessionsUsed = loginPkg.used || 0;
+    } else {
+      sessionsTotal = 0;
+      sessionsUsed = 0;
+    }
+    weeklyLimit = memberWeeklyLimits[currentMemberName] || weeklyLimit;
+    weeklyUsed = Math.min(weeklyUsed, weeklyLimit);
     document.getElementById('admin-app').style.display = 'none';
     document.getElementById('member-app').style.display = 'contents';
     renderClasses(); renderHomeUpcoming(); renderMembership(); renderTrainers(); renderMyConsumption(); renderProgressTracking(); renderBadges(); renderLeaderboard(); renderMyAnnouncements(); checkMonthlyMealReset(); renderPostureGallery(); renderMemberMeasurements(); checkMotivationNotification(); checkWeeklySummary(); checkWaterReminder(); checkMealSuggestion(); checkLeaderboardSeasonReset(); renderDailyChecklist(); renderGoalNote(); renderReferralCode(); checkBirthdayNotification(); renderClassHistory(); renderMonthlyCalendar(); renderTrainerNote(); renderFixedScheduleSummary(); renderMyContractStatus(); renderHomePackageDates();
@@ -6020,8 +6032,10 @@
       const payments = memberPayments[m.name] || [];
       const paidTotal = payments.reduce((s,p) => s + p.amount, 0);
       const isLive = m.name === currentMemberName;
-      const left = isLive ? (sessionsTotal - sessionsUsed) : (pkg ? (pkg.size - (pkg.used||0)) : null);
-      const total = isLive ? sessionsTotal : (pkg ? pkg.size : null);
+      // Admin ekranındaki üye kartları HER ZAMAN gerçek paket verisini (memberPackages) gösterir —
+      // "isLive" (şu an giriş yapmış üye) demo sayaçları sadece üyenin KENDİ ekranı için, buraya karışmamalı.
+      const left = pkg ? (pkg.unlimited ? Infinity : pkg.size - (pkg.used||0)) : null;
+      const total = pkg ? (pkg.unlimited ? Infinity : pkg.size) : null;
       const isOpen = expandedMembers.has(m.name);
       const mealLogIndex = adminMealLogs.findIndex(l => l.member === m.name);
       const mealLog = mealLogIndex !== -1 ? adminMealLogs[mealLogIndex] : null;
@@ -7269,11 +7283,15 @@
     }
     const endInput = document.getElementById('editEndDateInput');
     const weeklyInput = document.getElementById('editWeeklyLimitInput');
+    if(pkg){
+      const left = pkg.size - (pkg.used||0);
+      statusEl.textContent = (pkg.unlimited ? `Sınırsız paket` : `${left} / ${pkg.size} ders kaldı`) + ` · Haftalık limit: ${memberWeeklyLimits[member] || weeklyLimit} gün · Bitiş: ${formatDateTrLong(pkg.end)}`;
+      weeklyInput.value = memberWeeklyLimits[member] || weeklyLimit;
+    } else {
+      statusEl.textContent = `Bu üyeye henüz bir paket atanmadı. Haftalık limit: ${memberWeeklyLimits[member] || weeklyLimit} gün`;
+      weeklyInput.value = memberWeeklyLimits[member] || weeklyLimit;
+    }
     if(member === currentMemberName){
-      const left = sessionsTotal - sessionsUsed;
-      statusEl.textContent = `${left} / ${sessionsTotal} ders kaldı · Haftalık limit: ${weeklyLimit} gün` + (pkg ? ` · Bitiş: ${formatDateTrLong(pkg.end)}` : ' · Henüz paket ataması yok');
-      weeklyInput.value = weeklyLimit;
-
       const contact = [];
       if(memberProfile.age) contact.push(`👤 ${memberProfile.age} yaş`);
       if(memberProfile.gender) contact.push(`⚧ ${memberProfile.gender}`);
@@ -7285,13 +7303,7 @@
         contactEl.style.display = 'block';
         contactEl.innerHTML = `<b style="color:var(--brass); font-size:11px; letter-spacing:.5px;">ÜYE BİLGİLERİ</b><br><span style="color:var(--muted);">Üye henüz Ayarlar'dan yaş/cinsiyet/telefon girmedi.</span>`;
       }
-    } else if(pkg){
-      statusEl.textContent = `Paket: ${pkg.size} ders · Haftalık limit: ${memberWeeklyLimits[member] || 3} gün · Bitiş: ${formatDateTrLong(pkg.end)}`;
-      weeklyInput.value = memberWeeklyLimits[member] || 3;
-      contactEl.style.display = 'none';
     } else {
-      statusEl.textContent = `Bu üyeye henüz bir paket atanmadı. Haftalık limit: ${memberWeeklyLimits[member] || 3} gün`;
-      weeklyInput.value = memberWeeklyLimits[member] || 3;
       contactEl.style.display = 'none';
     }
     endInput.value = pkg ? pkg.end : '';
@@ -7535,13 +7547,16 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     }
     const pkg = memberPackages[member];
     const size = pkg ? pkg.size : 12;
-    const startDate = pkg ? toLocalDateStr(new Date(new Date(pkg.end).getTime() + 86400000)) : toLocalDateStr(getNow());
-    const days = prog.map(p => p.day);
-    const endDate = computeNthSessionDate(startDate, days, size);
-    memberPackages[member] = { size, start: startDate, end: endDate, used: 0 };
-    if(member === currentMemberName) renderMembership();
-    renderMemberProfiles();
-    if(typeof renderAdminHome === 'function') renderAdminHome();
+    customConfirm(`${member} için yeni bir dönem başlatılacak: ${size} derslik yeni bir paket tanımlanacak ve kalan/kullanılan ders sayısı sıfırlanacak. Emin misin?`, (ok) => {
+      if(!ok) return;
+      const startDate = pkg ? toLocalDateStr(new Date(new Date(pkg.end).getTime() + 86400000)) : toLocalDateStr(getNow());
+      const days = prog.map(p => p.day);
+      const endDate = computeNthSessionDate(startDate, days, size);
+      memberPackages[member] = { size, start: startDate, end: endDate, used: 0 };
+      if(member === currentMemberName) renderMembership();
+      renderMemberProfiles();
+      if(typeof renderAdminHome === 'function') renderAdminHome();
+    });
   }
   function adminChangeMemberTrainerInline(member, mi){
     const newTrainer = document.getElementById('cardTrainer-'+mi).value;
@@ -7740,12 +7755,11 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const member = document.getElementById('editMember').value;
     const newLimit = parseInt(document.getElementById('editWeeklyLimitInput').value, 10);
     if(!newLimit || newLimit < 1){ alert('Lütfen geçerli bir gün sayısı gir (1-7).'); return; }
+    memberWeeklyLimits[member] = newLimit;
     if(member === currentMemberName){
       weeklyLimit = newLimit;
       weeklyUsed = Math.min(weeklyUsed, weeklyLimit);
       renderMembership();
-    } else {
-      memberWeeklyLimits[member] = newLimit;
     }
     renderEditMemberStatus();
     document.getElementById('editMemberMsg').textContent = `${member} için haftalık giriş limiti ${newLimit} gün olarak güncellendi.`;
@@ -7755,7 +7769,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const newEnd = document.getElementById('editEndDateInput').value;
     if(!newEnd){ alert('Lütfen bir tarih seç.'); return; }
     if(!memberPackages[member]){
-      memberPackages[member] = { size: member === currentMemberName ? sessionsTotal : 12, start: toLocalDateStr(getNow()), end: newEnd };
+      memberPackages[member] = { size: 12, start: toLocalDateStr(getNow()), end: newEnd };
     } else {
       memberPackages[member].end = newEnd;
     }
