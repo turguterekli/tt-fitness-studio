@@ -1747,6 +1747,9 @@
   // bu iç dizileri { __arr: [...] } şeklinde sarıp güvenli hale getiriyoruz,
   // okurken de aynı şekilde geri açıyoruz. Bu sayede hangi veri olursa olsun kayıt bozulmuyor.
   function sanitizeForFirestore(value){
+    if(value instanceof Date){
+      return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
+    }
     if(Array.isArray(value)){
       return value.map(v => Array.isArray(v) ? { __arr: sanitizeForFirestore(v) } : sanitizeForFirestore(v));
     } else if(value && typeof value === 'object'){
@@ -6844,13 +6847,22 @@
     d.setMonth(d.getMonth() + n);
     return d;
   }
+  function coerceToDate(d){
+    if(d instanceof Date) return d;
+    if(typeof d === 'string') return new Date(d);
+    if(d && typeof d.toDate === 'function') return d.toDate(); // Firestore Timestamp sızarsa diye
+    if(d && typeof d.seconds === 'number') return new Date(d.seconds * 1000); // {seconds,nanoseconds} sızarsa diye
+    return null;
+  }
   function formatDateTr(d){
-    if(typeof d === 'string') d = new Date(d);
+    d = coerceToDate(d);
+    if(!d || isNaN(d.getTime())) return '—';
     return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
   }
   const aylarTr = ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
   function formatDateTrLong(d){
-    if(typeof d === 'string') d = new Date(d);
+    d = coerceToDate(d);
+    if(!d || isNaN(d.getTime())) return '—';
     return d.getDate() + ' ' + aylarTr[d.getMonth()] + ' ' + d.getFullYear();
   }
   function computeNthSessionDate(startDateStr, selectedDays, packageSize){
