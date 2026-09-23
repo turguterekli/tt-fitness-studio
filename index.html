@@ -1734,9 +1734,10 @@
   async function initFirebaseAndLoadData(){
     try{
       await firebase.auth().signInAnonymously();
-      const [membersSnap, trainersSnap] = await Promise.all([
+      const [membersSnap, trainersSnap, packagesDoc] = await Promise.all([
         db.collection('members').get(),
-        db.collection('trainers').get()
+        db.collection('trainers').get(),
+        db.collection('app_data').doc('memberPackages').get()
       ]);
       if(!membersSnap.empty){
         // Firestore'da elle oluşturulmuş kayıtlarda eksik olabilecek sayısal/varsayılan alanları doldur,
@@ -1762,9 +1763,63 @@
           else { trainers.push(cloud); }
         });
       }
+      if(packagesDoc.exists){
+        const cloudPkgs = packagesDoc.data() || {};
+        Object.keys(memberPackages).forEach(k => delete memberPackages[k]);
+        Object.assign(memberPackages, cloudPkgs);
+      }
+
+      // Uygulamanın geri kalan tüm üye verilerini (mesajlar, ödemeler, program, notlar, sözleşme
+      // onayları, duyurular, finans vb.) TEK bir bulut belgesinde topluca tutuyoruz.
+      // Not: Fotoğraf içeren alanlar (postür fotoğrafları, öğün fotoğrafları) bu listede YOK —
+      // onlar ayrı bir adımda Firebase Storage'a bağlanacak, metin/sayı verisi burada.
+      const appStateDoc = await db.collection('app_data').doc('appState').get();
+      const appStateRefs = [
+        [announcements, 'announcements', 'array'],
+        [financeEntries, 'financeEntries', 'array'],
+        [passwordResetRequests, 'passwordResetRequests', 'array'],
+        [sessionRequests, 'sessionRequests', 'array'],
+        [pendingCreditRequests, 'pendingCreditRequests', 'array'],
+        [notificationCenterItems, 'notificationCenterItems', 'array'],
+        [memberPayments, 'memberPayments', 'object'],
+        [memberMessages, 'memberMessages', 'object'],
+        [adminMessageUnread, 'adminMessageUnread', 'object'],
+        [attendanceLog, 'attendanceLog', 'object'],
+        [classConfirmations, 'classConfirmations', 'object'],
+        [contractAccepted, 'contractAccepted', 'object'],
+        [contractAcceptedVersion, 'contractAcceptedVersion', 'object'],
+        [contractAcceptedDate, 'contractAcceptedDate', 'object'],
+        [emergencyContacts, 'emergencyContacts', 'object'],
+        [healthDeclarations, 'healthDeclarations', 'object'],
+        [parentalConsents, 'parentalConsents', 'object'],
+        [photoConsent, 'photoConsent', 'object'],
+        [memberMealTargets, 'memberMealTargets', 'object'],
+        [mealReminders, 'mealReminders', 'object'],
+        [mealPhotoComments, 'mealPhotoComments', 'object'],
+        [memberWorkoutSequences, 'memberWorkoutSequences', 'object'],
+        [memberWeeklyLimits, 'memberWeeklyLimits', 'object'],
+        [memberNotes, 'memberNotes', 'object'],
+        [extraClassDays, 'extraClassDays', 'object'],
+        [referrals, 'referrals', 'object'],
+        [memberDiscounts, 'memberDiscounts', 'object'],
+        [seasonBaselinePoints, 'seasonBaselinePoints', 'object'],
+        [goalNotes, 'goalNotes', 'object'],
+        [memberMeasurements, 'memberMeasurements', 'object'],
+      ];
+      if(appStateDoc.exists){
+        const cloudState = appStateDoc.data() || {};
+        appStateRefs.forEach(([ref, field, kind]) => {
+          if(!(field in cloudState)) return;
+          if(kind === 'array'){ ref.length = 0; ref.push(...(cloudState[field] || [])); }
+          else { Object.keys(ref).forEach(k => delete ref[k]); Object.assign(ref, cloudState[field] || {}); }
+        });
+      }
+      startAutosaveAppState(appStateRefs);
+
       cloudReady = true;
       startAutosave(members, 'members');
       startAutosave(trainers, 'trainers');
+      startAutosaveObject(memberPackages, 'app_data/memberPackages');
       hideCloudLoading();
     }catch(err){
       console.error('Firebase yüklenemedi:', err);
@@ -1793,6 +1848,39 @@
         });
         await batch.commit();
       }catch(err){ console.error(collectionName + ' kaydedilemedi:', err); }
+    }, 3000);
+  }
+  // Tek bir bulut belgesinde tutulan sözlük/obje verileri için otomatik kayıt (örn. paket/ders hakları)
+  function startAutosaveObject(objRef, docPath){
+    let lastJSON = JSON.stringify(objRef);
+    setInterval(async () => {
+      if(!cloudReady) return;
+      const json = JSON.stringify(objRef);
+      if(json === lastJSON) return;
+      lastJSON = json;
+      try{ await db.doc(docPath).set(objRef); }
+      catch(err){ console.error(docPath + ' kaydedilemedi:', err); }
+    }, 3000);
+  }
+  // Onlarca farklı veri listesini (duyurular, ödemeler, mesajlar, notlar, sözleşmeler vb.)
+  // tek bir bulut belgesine, değişiklik olduğunda topluca kaydeder.
+  function startAutosaveAppState(refs){
+    const snapshot = () => {
+      const obj = {};
+      refs.forEach(([ref, field]) => { obj[field] = ref; });
+      return JSON.stringify(obj);
+    };
+    let lastJSON = snapshot();
+    setInterval(async () => {
+      if(!cloudReady) return;
+      const json = snapshot();
+      if(json === lastJSON) return;
+      lastJSON = json;
+      try{
+        const payload = {};
+        refs.forEach(([ref, field]) => { payload[field] = ref; });
+        await db.collection('app_data').doc('appState').set(payload);
+      }catch(err){ console.error('appState kaydedilemedi:', err); }
     }, 3000);
   }
   // ==================== /FIREBASE BAĞLANTISI ====================
