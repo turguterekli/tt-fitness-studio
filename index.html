@@ -148,6 +148,9 @@
   .avail-free{background:rgba(95,185,140,0.14); border-color:var(--green); color:var(--green); cursor:pointer;}
   .avail-free:hover{background:rgba(95,185,140,0.26);}
   .avail-busy{background:var(--panel-2); color:var(--muted); text-decoration:line-through; opacity:.7;}
+
+  .prog-day-chip{flex:1; text-align:center; padding:9px 2px; border-radius:9px; background:var(--panel-2); border:1px solid var(--line); color:var(--muted); font-size:11.5px; font-weight:600; cursor:pointer; user-select:none;}
+  .prog-day-chip.active{background:var(--brass); border-color:var(--brass); color:#171208;}
   .day-chip.active .d, .day-chip.active .n{color:#171208;}
 
   .class-item{display:flex; align-items:center; gap:14px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:10px;}
@@ -1103,7 +1106,8 @@
           <div class="card-label" style="margin-top:4px;">PAKET <span style="color:var(--muted); font-weight:400;">(istediğin sayıda ders)</span></div>
           <input type="number" id="progPackageSize" class="calc-input" style="width:100%; margin-bottom:10px;" placeholder="Kaç ders? (örn. 8, 12, 16, 24...)" value="12" min="1" oninput="renderPackageEnd()">
 
-          <div class="card-label" style="margin-top:4px;">GÜNLER VE SAATLERİ <span style="color:var(--muted); font-weight:400;">(her gün için ayrı saat seçebilirsin)</span></div>
+          <div class="card-label" style="margin-top:4px;">GÜNLER <span style="color:var(--muted); font-weight:400;">(bir veya birden fazla seç)</span></div>
+          <div id="progDayChips" style="display:flex; gap:6px; margin-bottom:10px;"></div>
           <div id="progDayChecks" style="margin-bottom:10px;"></div>
 
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; color:var(--chalk); font-size:12.5px; padding:11px 12px; cursor:pointer; text-align:left; font-family:var(--font-body); margin-bottom:10px;" onclick="toggleSequenceSection()">
@@ -1864,6 +1868,7 @@
         [goalNotes, 'goalNotes', 'object'],
         [memberMeasurements, 'memberMeasurements', 'object'],
         [memberPrograms, 'memberPrograms', 'object'],
+        [priceSettings, 'priceSettings', 'object'],
       ];
       if(appStateDoc.exists){
         const cloudState = desanitizeFromFirestore(appStateDoc.data() || {});
@@ -4934,7 +4939,10 @@
   }
 
   // ---- Tüketim (su/kahve billing) — artık personel tarafından elle giriliyor ----
-  let suFiyat = 10, kahveFiyat = 25;
+  // Su/kahve fiyatları tek bir objede tutuluyor ki appState otomatik kaydına eklenebilsin
+  // (düz sayı değişkenleri referansla izlenemediği için buluta hiç yazılmıyorlardı — bu yüzden
+  // fiyat değişiklikleri sayfa yenilenince kayboluyordu).
+  let priceSettings = { suFiyat: 10, kahveFiyat: 25 };
   const members = [
     { name: "Mert Aydın", water: 5, coffee: 2, waterCredits: 8, coffeeCredits: 3, status: "active", phone: "0542 249 32 27", password: "1234", role: "member", group: null, joinDate: "2025-11-01" },
     { name: "Elif Kara", water: 3, coffee: 1, waterCredits: 0, coffeeCredits: 0, status: "active", phone: "0532 111 22 33", password: "1234", role: "member", group: null, joinDate: "2026-08-01" },
@@ -5068,16 +5076,16 @@
   }
 
   function renderPriceForm(){
-    document.getElementById('suFiyatInput').value = suFiyat;
-    document.getElementById('kahveFiyatInput').value = kahveFiyat;
+    document.getElementById('suFiyatInput').value = priceSettings.suFiyat;
+    document.getElementById('kahveFiyatInput').value = priceSettings.kahveFiyat;
     const editCard = document.getElementById('priceEditCard');
     const viewCard = document.getElementById('priceViewOnlyCard');
     if(editCard && viewCard){
       if(adminTrainerScope){
         editCard.style.display = 'none';
         viewCard.style.display = 'block';
-        document.getElementById('priceViewSu').textContent = suFiyat;
-        document.getElementById('priceViewKahve').textContent = kahveFiyat;
+        document.getElementById('priceViewSu').textContent = priceSettings.suFiyat;
+        document.getElementById('priceViewKahve').textContent = priceSettings.kahveFiyat;
       } else {
         editCard.style.display = 'block';
         viewCard.style.display = 'none';
@@ -5092,9 +5100,9 @@
       alert('Lütfen geçerli fiyatlar gir.');
       return;
     }
-    suFiyat = newSu;
-    kahveFiyat = newKahve;
-    document.getElementById('priceHintText').textContent = `Su ${suFiyat} ₺ / bardak · Kahve ${kahveFiyat} ₺ / fincan üzerinden hesaplanır`;
+    priceSettings.suFiyat = newSu;
+    priceSettings.kahveFiyat = newKahve;
+    document.getElementById('priceHintText').textContent = `Su ${priceSettings.suFiyat} ₺ / bardak · Kahve ${priceSettings.kahveFiyat} ₺ / fincan üzerinden hesaplanır`;
     document.getElementById('priceSaveMsg').textContent = 'Fiyatlar güncellendi.';
     renderConsumption();
   }
@@ -6285,7 +6293,7 @@
     document.getElementById('consumptionList').innerHTML = members.map((m,i) => {
       if(m.role === 'admin') return '';
       if(adminTrainerScope && !(memberHasTrainer(m.name, adminTrainerScope) || !memberHasAnyTrainer(m.name))) return '';
-      const tutar = m.water*suFiyat + m.coffee*kahveFiyat;
+      const tutar = m.water*priceSettings.suFiyat + m.coffee*priceSettings.kahveFiyat;
       const isOpen = expandedConsumptionCards.has(m.name);
       return `
       <div class="admin-member-card">
@@ -6797,16 +6805,14 @@
       progTrainerEl.innerHTML = trainerOptions.map(t => `<option>${t.name}</option>`).join('');
       progTrainerEl.disabled = !!adminTrainerScope && trainerOptions.length <= 1;
     }
-    document.getElementById('progDayChecks').innerHTML = days.map((d,i) => `
-      <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:7px 9px; margin-bottom:6px;">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <label style="display:flex; align-items:center; gap:6px; font-size:11.5px; width:44px; flex-shrink:0; cursor:pointer;">
-            <input type="checkbox" class="progDayBox" value="${i}" onchange="renderPackageEnd(); renderOccupancyHint();"> ${d}
-          </label>
-          <button type="button" class="calc-input" id="progTimeBtn-${i}" style="flex:1; padding:7px 8px; font-size:12px; text-align:left; cursor:pointer;" onclick="openTimePicker('progTime-${i}', 'progTimeBtn-${i}', renderOccupancyHint)">Saat seç</button>
-          <input type="hidden" id="progTime-${i}">
-        </div>
-      </div>`).join('');
+    // Günler artık tek tek uzun kutular yerine kompakt bir tıklanabilir şerit halinde —
+    // sadece SEÇİLEN günler için altta ayrı bir saat satırı açılır.
+    document.getElementById('progDayChips').innerHTML = days.map((d,i) => `
+      <label class="prog-day-chip" id="progDayChip-${i}">
+        <input type="checkbox" class="progDayBox" value="${i}" id="progDayBox-${i}" style="display:none;" onchange="onProgDayToggle(${i})">
+        ${d.slice(0,3)}
+      </label>`).join('');
+    renderProgDayTimesList();
     currentWorkoutSequence = [];
     currentStepTypes = new Set();
     renderSequencePicker();
@@ -6825,6 +6831,44 @@
 
   function renderDayTimeOptions(){
     // Artık native select değil, buton + gizli input kullanıyoruz — özel bir doldurma gerekmiyor.
+  }
+  // Bir gün çubuğuna (chip) tıklanınca: çubuğun görünümünü güncelle, sadece seçili günler için
+  // saat satırlarını yeniden çiz, ve paket bitiş tarihi/doluluk kontrolünü tazele.
+  function onProgDayToggle(i){
+    const chip = document.getElementById('progDayChip-'+i);
+    const box = document.getElementById('progDayBox-'+i);
+    if(chip && box) chip.classList.toggle('active', box.checked);
+    renderProgDayTimesList();
+    renderPackageEnd();
+    renderOccupancyHint();
+  }
+  function renderProgDayTimesList(){
+    const checked = Array.from(document.querySelectorAll('.progDayBox:checked')).map(el => parseInt(el.value,10)).sort((a,b)=>a-b);
+    const container = document.getElementById('progDayChecks');
+    if(!container) return;
+    // Yeniden çizmeden önce, hâlihazırda seçili günler için girilmiş saatleri hafızaya al —
+    // yoksa başka bir gün eklendiğinde/çıkarıldığında önceden seçilmiş saatler silinirdi.
+    const savedTimes = {};
+    checked.forEach(i => {
+      const t = document.getElementById('progTime-'+i);
+      if(t && t.value) savedTimes[i] = t.value;
+    });
+    container.innerHTML = checked.length ? checked.map(i => `
+      <div style="background:var(--panel-2); border:1px solid var(--line); border-radius:9px; padding:7px 9px; margin-bottom:6px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11.5px; width:44px; flex-shrink:0; color:var(--chalk); font-weight:600;">${days[i]}</span>
+          <button type="button" class="calc-input" id="progTimeBtn-${i}" style="flex:1; padding:7px 8px; font-size:12px; text-align:left; cursor:pointer;" onclick="openTimePicker('progTime-${i}', 'progTimeBtn-${i}', renderOccupancyHint)">Saat seç</button>
+          <input type="hidden" id="progTime-${i}">
+        </div>
+      </div>`).join('') : '<div style="font-size:11px; color:var(--muted); text-align:center; padding:4px 0 2px;">Yukarıdan gün(ler) seç, saat seçenekleri burada çıkar.</div>';
+    checked.forEach(i => {
+      if(savedTimes[i]){
+        const t = document.getElementById('progTime-'+i);
+        const btn = document.getElementById('progTimeBtn-'+i);
+        if(t) t.value = savedTimes[i];
+        if(btn) btn.textContent = savedTimes[i];
+      }
+    });
   }
   let customConfirmCallback = null;
   function customConfirm(message, callback){
