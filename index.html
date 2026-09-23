@@ -79,6 +79,21 @@
   .statusbar .bars span:nth-child(1){height:4px;} .statusbar .bars span:nth-child(2){height:6px;}
   .statusbar .bars span:nth-child(3){height:8px;} .statusbar .bars span:nth-child(4){height:10px;}
 
+  /* Gerçek telefonda (veya uygulama olarak açıldığında) sahte saat/sinyal çubuğu ve
+     telefon çerçevesi gösterilmez — telefonun kendi durum çubuğu zaten var. */
+  @media (max-width: 480px){
+    body{ padding:0; }
+    .phone{
+      width:100vw; max-width:100vw; height:100vh; max-height:100vh;
+      border-radius:0; border:none; box-shadow:none;
+    }
+    .notch{ display:none; }
+    .statusbar{ display:none; }
+    .topbar{ padding-top:calc(8px + env(safe-area-inset-top)); }
+    .app-header{ padding-top:calc(10px + env(safe-area-inset-top)); }
+    .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
+  }
+
   .screen{flex:1; overflow-y:auto; padding:4px 20px 24px; scrollbar-width:none;}
   .screen::-webkit-scrollbar{display:none;}
 
@@ -250,6 +265,11 @@
   <div style="color:#ECEAE4; font-size:14px;">Yükleniyor…</div>
   <div id="cloudLoadingError" style="display:none; color:#C1432B; font-size:13px; text-align:center; max-width:260px;"></div>
   <style>@keyframes cloudSpin{ to { transform:rotate(360deg); } }</style>
+</div>
+
+<div id="cloudSaveIndicator" style="position:fixed; top:calc(8px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%); z-index:99998; background:rgba(21,23,27,0.92); color:#ECEAE4; font-family:'IBM Plex Sans', sans-serif; font-size:11.5px; padding:5px 12px; border-radius:20px; display:none; align-items:center; gap:6px; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,0.35);">
+  <span id="cloudSaveDot" style="width:7px; height:7px; border-radius:50%; background:#CE997A;"></span>
+  <span id="cloudSaveText">Kaydediliyor…</span>
 </div>
 
 <div class="phone" id="phoneRoot">
@@ -1731,6 +1751,38 @@
     if(errEl){ errEl.textContent = msg; errEl.style.display = 'block'; }
   }
 
+  // Ekranın üstünde küçük bir "Kaydediliyor… / Kaydedildi / Kaydedilemedi" göstergesi —
+  // kullanıcı bir değişikliğin buluta gerçekten gidip gitmediğini görebilsin diye.
+  let pendingSaveCount = 0;
+  function showSaving(){
+    pendingSaveCount++;
+    const el = document.getElementById('cloudSaveIndicator');
+    const dot = document.getElementById('cloudSaveDot');
+    const text = document.getElementById('cloudSaveText');
+    if(el) el.style.display = 'flex';
+    if(dot) dot.style.background = '#CE997A';
+    if(text) text.textContent = 'Kaydediliyor…';
+  }
+  function showSaved(){
+    pendingSaveCount = Math.max(0, pendingSaveCount - 1);
+    if(pendingSaveCount > 0) return;
+    const el = document.getElementById('cloudSaveIndicator');
+    const dot = document.getElementById('cloudSaveDot');
+    const text = document.getElementById('cloudSaveText');
+    if(dot) dot.style.background = '#5FB98C';
+    if(text) text.textContent = 'Kaydedildi ✓';
+    setTimeout(() => { if(pendingSaveCount === 0 && el) el.style.display = 'none'; }, 1500);
+  }
+  function showSaveFailed(msg){
+    pendingSaveCount = Math.max(0, pendingSaveCount - 1);
+    const el = document.getElementById('cloudSaveIndicator');
+    const dot = document.getElementById('cloudSaveDot');
+    const text = document.getElementById('cloudSaveText');
+    if(el) el.style.display = 'flex';
+    if(dot) dot.style.background = '#C1432B';
+    if(text) text.textContent = 'Kaydedilemedi! ' + (msg || 'İnternetini kontrol et.');
+  }
+
   async function initFirebaseAndLoadData(){
     try{
       await firebase.auth().signInAnonymously();
@@ -1821,6 +1873,7 @@
       startAutosave(members, 'members');
       startAutosave(trainers, 'trainers');
       startAutosaveObject(memberPackages, 'app_data/memberPackages');
+      tryAutoLogin();
       hideCloudLoading();
     }catch(err){
       console.error('Firebase yüklenemedi:', err);
@@ -1837,6 +1890,7 @@
       const json = JSON.stringify(arrRef);
       if(json === lastJSON) return;
       lastJSON = json;
+      showSaving();
       try{
         const batch = db.batch();
         arrRef.forEach(item => {
@@ -1848,8 +1902,9 @@
           batch.set(ref, data, { merge: true });
         });
         await batch.commit();
-      }catch(err){ console.error(collectionName + ' kaydedilemedi:', err); }
-    }, 3000);
+        showSaved();
+      }catch(err){ console.error(collectionName + ' kaydedilemedi:', err); showSaveFailed(err.message); }
+    }, 1000);
   }
   // Tek bir bulut belgesinde tutulan sözlük/obje verileri için otomatik kayıt (örn. paket/ders hakları)
   function startAutosaveObject(objRef, docPath){
@@ -1859,9 +1914,10 @@
       const json = JSON.stringify(objRef);
       if(json === lastJSON) return;
       lastJSON = json;
-      try{ await db.doc(docPath).set(objRef); }
-      catch(err){ console.error(docPath + ' kaydedilemedi:', err); }
-    }, 3000);
+      showSaving();
+      try{ await db.doc(docPath).set(objRef); showSaved(); }
+      catch(err){ console.error(docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
+    }, 1000);
   }
   // Onlarca farklı veri listesini (duyurular, ödemeler, mesajlar, notlar, sözleşmeler vb.)
   // tek bir bulut belgesine, değişiklik olduğunda topluca kaydeder.
@@ -1877,13 +1933,20 @@
       const json = snapshot();
       if(json === lastJSON) return;
       lastJSON = json;
+      showSaving();
       try{
         const payload = {};
         refs.forEach(([ref, field]) => { payload[field] = ref; });
         await db.collection('app_data').doc('appState').set(payload);
-      }catch(err){ console.error('appState kaydedilemedi:', err); }
-    }, 3000);
+        showSaved();
+      }catch(err){ console.error('appState kaydedilemedi:', err); showSaveFailed(err.message); }
+    }, 1000);
   }
+  // Kayıt sürerken sayfa kapatılır/yenilenirse tarayıcı uyarsın (masaüstünde çalışır, bazı
+  // mobil tarayıcılarda görünmeyebilir ama zarar vermez).
+  window.addEventListener('beforeunload', (e) => {
+    if(pendingSaveCount > 0){ e.preventDefault(); e.returnValue = ''; }
+  });
   // ==================== /FIREBASE BAĞLANTISI ====================
 
   const days = ["PZT","SAL","ÇAR","PER","CUM","CMT","PAZ"];
@@ -4173,6 +4236,7 @@
     document.getElementById('logoutConfirmBox').style.display = 'none';
   }
   function logOut(){
+    try{ localStorage.removeItem('ttf_session'); }catch(e){}
     document.getElementById('member-app').style.display = 'none';
     document.getElementById('admin-app').style.display = 'none';
     document.getElementById('logged-out-screen').style.display = 'flex';
@@ -4228,7 +4292,14 @@
       errorEl.textContent = 'Şifre hatalı. Tekrar dene.';
       return;
     }
+    completeLogin(found);
+  }
+
+  // "Beni hatırla": şifre doğrulaması bittikten sonra oturumu bu cihazda saklar,
+  // bir dahaki açılışta tekrar şifre sormadan doğrudan içeri alır.
+  function completeLogin(found){
     document.getElementById('logged-out-screen').style.display = 'none';
+    try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: found.phone })); }catch(e){}
 
     if(found.role === 'admin'){
       // Aynı giriş ekranı — sadece hesabın rolüne göre farklı arayüz açılıyor
@@ -4251,6 +4322,19 @@
       switchTab('home', document.querySelector('#member-app .tab[data-view="home"]'));
       maybeShowOnboarding();
     }
+  }
+
+  // Sayfa açılışında daha önce kaydedilmiş bir oturum var mı diye bakar; varsa şifre sormadan girer.
+  function tryAutoLogin(){
+    try{
+      const raw = localStorage.getItem('ttf_session');
+      if(!raw) return false;
+      const saved = JSON.parse(raw);
+      const found = members.find(m => normalizePhone(m.phone) === normalizePhone(saved.phone));
+      if(!found || found.status === 'pending') return false;
+      completeLogin(found);
+      return true;
+    }catch(e){ return false; }
   }
 
   // ---- Yönetici girişi (kullanıcı adı + şifre ile, gizli tetikleyici ile açılır) ----
