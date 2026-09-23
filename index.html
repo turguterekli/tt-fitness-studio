@@ -6048,9 +6048,6 @@
         <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
           <div class="admin-sub" style="margin-bottom:5px; font-size:11px;">${contact.join(' · ') || 'İletişim bilgisi yok'}</div>
           ${isVipMember(m) ? `<div style="font-size:10.5px; color:var(--brass); font-weight:600; margin-bottom:5px;">⭐ Sadık Üye — ${formatDateTr(m.joinDate)} tarihinden beri üye</div>` : ''}
-          <div class="admin-sub" style="margin-bottom:10px; font-size:11px;">
-            ${pkg ? (pkg.unlimited ? `📦 Sınırsız Paket · ${formatDateTr(pkg.start)}–${formatDateTr(pkg.end)}` : `📦 ${pkg.size} Ders · ${formatDateTr(pkg.start)}–${formatDateTr(pkg.end)}`) : 'Henüz paket ataması yok'}
-          </div>
 
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; color:var(--chalk); font-size:12px; padding:10px 12px; cursor:pointer; text-align:left; font-family:var(--font-body); margin-bottom:8px;" onclick="toggleMemberProgramSection('${m.name}')">
             <span>📅 Atanmış Program <span style="color:var(--muted); font-weight:400;">(${(memberPrograms[m.name] || []).length} ders)</span></span>
@@ -6118,21 +6115,23 @@
           ` : ''}
 
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; color:var(--chalk); font-size:12px; padding:10px 12px; cursor:pointer; text-align:left; font-family:var(--font-body); margin-top:10px;" onclick="toggleMemberCreditSection('${m.name}')">
-            <span>🎫 Ders Hakkı ${pkg && pkg.unlimited ? '<span style="color:var(--brass); font-weight:600;">Sınırsız</span>' : (total !== null ? `<span style="color:var(--brass); font-weight:600;">${left}/${total}</span>` : '')}</span>
+            <span>🎫 Ders Hakkı ${pkg && pkg.unlimited ? '<span style="color:var(--brass); font-weight:600;">Sınırsız</span>' : (total !== null ? `<span style="color:var(--brass); font-weight:600;">${left}/${total}</span>` : '<span style="color:var(--muted); font-weight:400;">paket yok</span>')}</span>
             <span style="color:var(--muted); transition:transform .15s; transform:rotate(${expandedMemberCredit.has(m.name) ? '90deg' : '0deg'});">›</span>
           </button>
           ${expandedMemberCredit.has(m.name) ? `
           <div style="margin-top:8px;">
-            <div style="display:flex; gap:8px; margin-bottom:8px;">
-              <input type="number" id="cardSessionAmount-${mi}" class="calc-input" value="1" min="1" style="max-width:70px; min-width:0; font-size:11px; padding:7px 9px;">
-              <button class="btn btn-ghost" style="flex:1; font-size:11.5px;" onclick="adminUseSessionInline('${m.name}', ${mi})">– Düş</button>
-              <button class="btn btn-ghost" style="flex:1; font-size:11.5px;" onclick="adminRefundSessionInline('${m.name}', ${mi})">+ İade Et</button>
+            ${pkg ? `<div class="admin-sub" style="margin-bottom:10px; font-size:11px;">${pkg.unlimited ? `Sınırsız paket · ${formatDateTr(pkg.start)} – ${formatDateTr(pkg.end)} arası geçerli` : `Kalan <b style="color:var(--chalk);">${left}</b> / Toplam <b style="color:var(--chalk);">${total}</b> ders · ${formatDateTr(pkg.start)} – ${formatDateTr(pkg.end)} arası geçerli`}</div>` : `<div class="admin-sub" style="margin-bottom:10px; font-size:11px;">Bu üyeye henüz paket atanmadı.</div>`}
+            <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
+              <span style="font-size:10.5px; color:var(--muted); white-space:nowrap;">Kaç ders?</span>
+              <input type="number" id="cardSessionAmount-${mi}" class="calc-input" value="1" min="1" style="max-width:60px; min-width:0; font-size:11px; padding:7px 9px;">
+              <button class="btn btn-ghost" style="flex:1; font-size:11.5px;" onclick="adminUseSessionInline('${m.name}', ${mi})">− Ders Düş</button>
+              <button class="btn btn-ghost" style="flex:1; font-size:11.5px;" onclick="adminRefundSessionInline('${m.name}', ${mi})">+ Ders Ekle</button>
             </div>
             <label style="display:flex; align-items:flex-start; gap:6px; margin-bottom:10px; cursor:pointer;">
               <input type="checkbox" id="cardSessionPermanent-${mi}" style="width:14px; height:14px; margin-top:1px; flex-shrink:0;">
-              <span style="font-size:10px; color:var(--muted);">İade kalıcı olsun (paketi büyütür, bitişi uzatır)</span>
+              <span style="font-size:10px; color:var(--muted);">Kalıcı olsun (paketin toplam ders sayısını da artırır, bitiş tarihini uzatır)</span>
             </label>
-            <button class="btn btn-brass btn-full" style="margin-bottom:10px; font-size:11.5px;" onclick="adminRenewPackageInline('${m.name}')">Aynı Programla Yenile</button>
+            <button class="btn btn-brass btn-full" style="margin-bottom:10px; font-size:11.5px;" onclick="adminRenewPackageInline('${m.name}')">🔄 Yeni Dönem Başlat (Paketi Yenile)</button>
             <button class="btn btn-ghost btn-full" style="font-size:11.5px;" onclick="openSequenceEditModal('${m.name}')">🔁 Antrenman Sıralaması (Göğüs/Sırt/Kol vb.)</button>
           </div>
           ` : ''}
