@@ -1805,6 +1805,7 @@
         [seasonBaselinePoints, 'seasonBaselinePoints', 'object'],
         [goalNotes, 'goalNotes', 'object'],
         [memberMeasurements, 'memberMeasurements', 'object'],
+        [memberPrograms, 'memberPrograms', 'object'],
       ];
       if(appStateDoc.exists){
         const cloudState = appStateDoc.data() || {};
@@ -7356,13 +7357,14 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const amount = parseInt(document.getElementById('cardSessionAmount-'+mi).value, 10) || 1;
     customConfirm(`${member} için ${amount} ders hakkı düşülecek. Emin misin?`, (ok) => {
       if(!ok) return;
-      if(member === currentMemberName){
-        sessionsUsed = Math.min(sessionsTotal, sessionsUsed + amount);
-        renderMembership();
-      } else if(memberPackages[member]){
+      if(memberPackages[member]){
         memberPackages[member].used = Math.min(memberPackages[member].size, (memberPackages[member].used || 0) + amount);
       } else {
         memberPackages[member] = { size: 12, start: toLocalDateStr(getNow()), end: toLocalDateStr(addMonths(toLocalDateStr(getNow()), 1)), used: amount };
+      }
+      if(member === currentMemberName){
+        sessionsUsed = Math.min(sessionsTotal, sessionsUsed + amount);
+        renderMembership();
       }
       renderMemberProfiles();
     });
@@ -7515,13 +7517,14 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const amount = parseInt(document.getElementById('sessionAdjustAmount').value, 10) || 1;
     customConfirm(`${member} için ${amount} ders hakkı düşülecek. Emin misin?`, (ok) => {
       if(!ok) return;
-      if(member === currentMemberName){
-        sessionsUsed = Math.min(sessionsTotal, sessionsUsed + amount);
-        renderMembership();
-      } else if(memberPackages[member]){
+      if(memberPackages[member]){
         memberPackages[member].used = Math.min(memberPackages[member].size, (memberPackages[member].used || 0) + amount);
       } else {
         memberPackages[member] = { size: 12, start: toLocalDateStr(getNow()), end: toLocalDateStr(addMonths(toLocalDateStr(getNow()), 1)), used: amount };
+      }
+      if(member === currentMemberName){
+        sessionsUsed = Math.min(sessionsTotal, sessionsUsed + amount);
+        renderMembership();
       }
       renderEditMemberStatus();
       renderAssignedPrograms();
@@ -7567,11 +7570,12 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
   }
   function executeRefundSession(member, amount){
     amount = amount || 1;
+    if(memberPackages[member]){
+      memberPackages[member].used = Math.max(0, (memberPackages[member].used || 0) - amount);
+    }
     if(member === currentMemberName){
       sessionsUsed = Math.max(0, sessionsUsed - amount);
       renderMembership();
-    } else if(memberPackages[member]){
-      memberPackages[member].used = Math.max(0, (memberPackages[member].used || 0) - amount);
     }
     renderEditMemberStatus();
     renderAssignedPrograms();
@@ -7594,12 +7598,13 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     extraClassDays[member].sort((a,b) => (a.date+a.time).localeCompare(b.date+b.time));
 
     // Ekstra ders olduğu için hemen bir ders hakkı düşer
+    if(memberPackages[member]){
+      memberPackages[member].used = Math.min(memberPackages[member].size, (memberPackages[member].used || 0) + 1);
+    }
     if(member === currentMemberName){
       sessionsUsed = Math.min(sessionsTotal, sessionsUsed + 1);
       renderMembership();
       renderHomeUpcoming();
-    } else if(memberPackages[member]){
-      memberPackages[member].used = Math.min(memberPackages[member].size, (memberPackages[member].used || 0) + 1);
     }
 
     document.getElementById('extraDayName').value = '';
