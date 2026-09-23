@@ -79,16 +79,19 @@
   .statusbar .bars span:nth-child(1){height:4px;} .statusbar .bars span:nth-child(2){height:6px;}
   .statusbar .bars span:nth-child(3){height:8px;} .statusbar .bars span:nth-child(4){height:10px;}
 
-  /* Gerçek telefonda (veya uygulama olarak açıldığında) sahte saat/sinyal çubuğu ve
-     telefon çerçevesi gösterilmez — telefonun kendi durum çubuğu zaten var. */
+  /* Sahte saat/sinyal çubuğu ve çentik hiçbir yerde gösterilmez — gerçek telefonun
+     kendi durum çubuğu zaten var, bu demo amaçlı bir mockup öğesiydi. */
+  .notch{ display:none; }
+  .statusbar{ display:none; }
+  .topbar{ padding-top:14px; }
+  .app-header{ padding-top:10px; }
+
   @media (max-width: 480px){
     body{ padding:0; }
     .phone{
       width:100vw; max-width:100vw; height:100vh; max-height:100vh;
       border-radius:0; border:none; box-shadow:none;
     }
-    .notch{ display:none; }
-    .statusbar{ display:none; }
     .topbar{ padding-top:calc(8px + env(safe-area-inset-top)); }
     .app-header{ padding-top:calc(10px + env(safe-area-inset-top)); }
     .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
@@ -6051,7 +6054,6 @@
           <span style="font-size:12.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${m.name}${isVipMember(m) ? ' <span title="6+ aydır üye" style="color:var(--brass);">⭐</span>' : ''}</span>
           <span style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
             ${m.status === 'pending' ? '<span class="status-pill status-due" style="font-size:9.5px; padding:2px 6px;">Bekliyor</span>' : ''}
-            ${!memberHasAnyTrainer(m.name) ? '<span class="status-pill status-due" style="font-size:9.5px; padding:2px 6px;">Antrenör atanmadı</span>' : ''}
             ${total !== null ? `<span style="font-size:10.5px; color:var(--muted); white-space:nowrap;">${left}/${total} ders</span>` : ''}
             <span style="font-family:var(--font-display); font-weight:700; color:var(--brass); font-size:12.5px; white-space:nowrap;">${paidTotal} ₺</span>
             <span style="color:var(--muted); font-size:13px; display:inline-block; transition:transform .15s; transform:rotate(${isOpen ? '90deg' : '0deg'});">›</span>
@@ -6062,6 +6064,7 @@
         <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
           <div class="admin-sub" style="margin-bottom:5px; font-size:11px;">${contact.join(' · ') || 'İletişim bilgisi yok'}</div>
           ${isVipMember(m) ? `<div style="font-size:10.5px; color:var(--brass); font-weight:600; margin-bottom:5px;">⭐ Sadık Üye — ${formatDateTr(m.joinDate)} tarihinden beri üye</div>` : ''}
+          ${!memberHasAnyTrainer(m.name) ? '<div style="font-size:10.5px; color:var(--red); font-weight:600; margin-bottom:5px;">⚠️ Antrenör atanmadı</div>' : ''}
 
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; color:var(--chalk); font-size:12px; padding:10px 12px; cursor:pointer; text-align:left; font-family:var(--font-body); margin-bottom:8px;" onclick="toggleMemberProgramSection('${m.name}')">
             <span>📅 Atanmış Program <span style="color:var(--muted); font-weight:400;">(${(memberPrograms[m.name] || []).length} ders)</span></span>
@@ -6135,6 +6138,14 @@
           ${expandedMemberCredit.has(m.name) ? `
           <div style="margin-top:8px;">
             ${pkg ? `<div class="admin-sub" style="margin-bottom:10px; font-size:11px;">${pkg.unlimited ? `Sınırsız paket · ${formatDateTr(pkg.start)} – ${formatDateTr(pkg.end)} arası geçerli` : `Kalan <b style="color:var(--chalk);">${left}</b> / Toplam <b style="color:var(--chalk);">${total}</b> ders · ${formatDateTr(pkg.start)} – ${formatDateTr(pkg.end)} arası geçerli`}</div>` : `<div class="admin-sub" style="margin-bottom:10px; font-size:11px;">Bu üyeye henüz paket atanmadı.</div>`}
+            ${pkg ? `
+            <div style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">
+              <input type="date" id="cardPkgStart-${mi}" class="calc-input" value="${pkg.start||''}" style="flex:1; font-size:10.5px; padding:6px 8px; min-width:0;">
+              <span style="color:var(--muted); font-size:11px;">–</span>
+              <input type="date" id="cardPkgEnd-${mi}" class="calc-input" value="${pkg.end||''}" style="flex:1; font-size:10.5px; padding:6px 8px; min-width:0;">
+              <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminFixPackageDates('${m.name}', ${mi})">Tarihi Düzelt</button>
+            </div>
+            ` : ''}
             <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
               <span style="font-size:10.5px; color:var(--muted); white-space:nowrap;">Kaç ders?</span>
               <input type="number" id="cardSessionAmount-${mi}" class="calc-input" value="1" min="1" style="max-width:60px; min-width:0; font-size:11px; padding:7px 9px;">
@@ -6522,6 +6533,20 @@
     }
     renderMemberProfiles();
     alert(`${member} için ${formatDateTr(start)} – ${formatDateTr(end)} tarihleri arasında, sabit gün/saat gerektirmeyen bir paket tanımlandı.`);
+  }
+  // Var olan bir paketin başlangıç/bitiş tarihini elle düzeltmek için (örn. tekrar tekrar
+  // ders eklendikten sonra tarih aralığı istenmeyen bir noktaya gittiyse, buradan düzeltilebilir).
+  function adminFixPackageDates(member, mi){
+    const start = document.getElementById('cardPkgStart-'+mi).value;
+    const end = document.getElementById('cardPkgEnd-'+mi).value;
+    if(!start || !end){ alert('Lütfen başlangıç ve bitiş tarihini seç.'); return; }
+    if(end <= start){ alert('Bitiş tarihi başlangıç tarihinden sonra olmalı.'); return; }
+    if(!memberPackages[member]) return;
+    memberPackages[member].start = start;
+    memberPackages[member].end = end;
+    renderMemberProfiles();
+    renderEditMemberStatus();
+    if(member === currentMemberName) renderMembership();
   }
   let expandedMemberProgram = new Set();
   let expandedMemberWater = new Set();
@@ -7638,9 +7663,16 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const scheduledDays = (memberPrograms[member] || []).map(c => c.day);
     if(memberPackages[member]){
       memberPackages[member].size += extra;
-      // Bitiş tarihini, üyenin gerçek haftalık gün sayısına göre yeniden hesapla
+      // Bitiş tarihini SADECE eklenen ders sayısı kadar, mevcut bitiş tarihinden (paket süresi
+      // dolmuşsa bugünden) itibaren ileri hesapla. Eskiden toplam ders sayısı üzerinden baştan
+      // hesaplanıyordu; bu, tekrar tekrar ders eklendikçe tarihi katlanarak (aylarca) ileri
+      // götürüyordu — artık her ekleme sadece kendi süresi kadar uzatıyor.
       if(scheduledDays.length){
-        memberPackages[member].end = toLocalDateStr(computeNthSessionDate(memberPackages[member].start, scheduledDays, memberPackages[member].size));
+        const today = toLocalDateStr(getNow());
+        const currentEnd = memberPackages[member].end;
+        const base = (currentEnd && currentEnd > today) ? currentEnd : today;
+        const fromDate = toLocalDateStr(new Date(new Date(base).getTime() + 86400000));
+        memberPackages[member].end = toLocalDateStr(computeNthSessionDate(fromDate, scheduledDays, extra));
       }
     } else {
       memberPackages[member] = { size: extra, start: toLocalDateStr(getNow()), end: toLocalDateStr(addMonths(toLocalDateStr(getNow()), 1)) };
