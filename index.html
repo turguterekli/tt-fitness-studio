@@ -272,6 +272,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
 </head>
 <body>
 
@@ -1731,7 +1732,19 @@
   console.log('%cTT FITNESS BUILD: 2026-09-24-v9', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+  const storage = firebase.storage();
   let cloudReady = false;
+
+  // Bir fotoğrafı (base64 data URL olarak elde edilmiş) Firebase Storage'a yükleyip,
+  // Firestore'a KAYDEDİLECEK olan şeyin base64 değil, kısa bir bulut linki (URL) olmasını sağlar.
+  // Böylece hem fotoğraflar kalıcı olur hem de Firestore belgeleri şişip bozulmaz.
+  async function uploadPhotoToStorage(dataUrl, folder){
+    if(!dataUrl || !dataUrl.startsWith('data:')) return dataUrl; // zaten bir URL ise (önceden yüklenmiş) olduğu gibi bırak
+    const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+    const ref = storage.ref().child(path);
+    await ref.putString(dataUrl, 'data_url');
+    return await ref.getDownloadURL();
+  }
 
   // Firestore, bir dizinin içine doğrudan başka bir dizi konulmasına izin vermiyor
   // (örn. antrenman sıralaması gibi "dizi içinde dizi" yapılar). Buluta yazmadan önce
@@ -1878,6 +1891,11 @@
         [memberMeasurements, 'memberMeasurements', 'object'],
         [memberPrograms, 'memberPrograms', 'object'],
         [priceSettings, 'priceSettings', 'object'],
+        [posturePhotos, 'posturePhotos', 'object'],
+        [progressEntries, 'progressEntries', 'object'],
+        [memberProfiles, 'memberProfiles', 'object'],
+        [memberMeals, 'memberMeals', 'object'],
+        [memberTrainerNotes, 'memberTrainerNotes', 'object'],
       ];
       if(appStateDoc.exists){
         const cloudState = desanitizeFromFirestore(appStateDoc.data() || {});
@@ -2057,12 +2075,21 @@
     }
   }
   const demoMealPhotoSvg = "data:image/svg+xml;base64," + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="#c9915f"/><circle cx="150" cy="130" r="70" fill="#e8c39e"/><circle cx="120" cy="110" r="14" fill="#8a5a34"/><circle cx="175" cy="100" r="10" fill="#8a5a34"/><circle cx="160" cy="150" r="12" fill="#8a5a34"/><rect x="60" y="220" width="180" height="14" rx="7" fill="#7a4a2a"/><text x="150" y="270" font-family="sans-serif" font-size="18" fill="#3a2210" text-anchor="middle">Tavuklu Salata</text></svg>`);
-  let meals = {
-    "Kahvaltı": [{name:"Yulaf ezmesi", cal:220, date: toLocalDateStr(getNow())}, {name:"2 haşlanmış yumurta", cal:150, date: toLocalDateStr(getNow())}],
-    "Öğle": [{name:"Tavuklu salata", cal:420, date: toLocalDateStr(getNow()), photo: demoMealPhotoSvg}],
-    "Akşam": [],
-    "Ara Öğün": [{name:"Badem (bir avuç)", cal:170, date: toLocalDateStr(getNow())}]
+  // Önceden "meals" tek bir ortak obje olarak tutuluyordu — hangi üye giriş yapmışsa öğün
+  // günlüğü ona göre görünüyordu, yani TÜM üyeler aslında aynı öğün listesini paylaşıyordu.
+  // Artık üye başına ayrı bir öğün günlüğü tutuluyor.
+  let memberMeals = {
+    "Mert Aydın": {
+      "Kahvaltı": [{name:"Yulaf ezmesi", cal:220, date: toLocalDateStr(getNow())}, {name:"2 haşlanmış yumurta", cal:150, date: toLocalDateStr(getNow())}],
+      "Öğle": [{name:"Tavuklu salata", cal:420, date: toLocalDateStr(getNow()), photo: demoMealPhotoSvg}],
+      "Akşam": [],
+      "Ara Öğün": [{name:"Badem (bir avuç)", cal:170, date: toLocalDateStr(getNow())}]
+    }
   };
+  function getMemberMeals(name){
+    if(!memberMeals[name]) memberMeals[name] = { "Kahvaltı": [], "Öğle": [], "Akşam": [], "Ara Öğün": [] };
+    return memberMeals[name];
+  }
 
   // ---- Öğünlerin aylık sıfırlanması ----
   let lastMealMonth = null;
@@ -2074,6 +2101,7 @@
     }
     if(currentMonth !== lastMealMonth){
       lastMealMonth = currentMonth;
+      const meals = getMemberMeals(currentMemberName);
       Object.keys(meals).forEach(k => meals[k] = []);
       if(typeof renderMeals === 'function') renderMeals();
       if(typeof renderAdminMeals === 'function') renderAdminMeals();
@@ -2445,14 +2473,16 @@
   let posturePhotos = { "Mert Aydın": [] }; // { memberName: [{date, photo, addedBy}] } — üye veya yönetici ekleyebilir
   let memberMeasurements = { "Mert Aydın": [] }; // { memberName: [{date, weight, neck, shoulder, chest, waist, hip, leg}] } — sadece yönetici ekler
 
-  function savePosturePhotoEntryForMember(memberName, photoDataUrl, addedBy){
+  async function savePosturePhotoEntryForMember(memberName, photoDataUrl, addedBy){
     if(!posturePhotos[memberName]) posturePhotos[memberName] = [];
-    posturePhotos[memberName].push({ date: toLocalDateStr(getNow()), photo: photoDataUrl, addedBy: addedBy || 'member' });
+    // Fotoğrafı Firestore'a değil, Storage'a yüklüyoruz — kaydedilen sadece küçük bir bulut linki.
+    const photoUrl = await uploadPhotoToStorage(photoDataUrl, 'posture');
+    posturePhotos[memberName].push({ date: toLocalDateStr(getNow()), photo: photoUrl, addedBy: addedBy || 'member' });
     if(memberName === currentMemberName) renderPostureGallery();
     if(typeof renderMemberPostureAdmin === 'function') renderMemberPostureAdmin();
   }
-  function savePosturePhotoEntry(photoDataUrl, addedBy){
-    savePosturePhotoEntryForMember(currentMemberName, photoDataUrl, addedBy);
+  async function savePosturePhotoEntry(photoDataUrl, addedBy){
+    await savePosturePhotoEntryForMember(currentMemberName, photoDataUrl, addedBy);
   }
 
   function renderPostureGallery(){
@@ -2499,17 +2529,18 @@
     reader.readAsDataURL(file);
   }
 
-  function addProgressEntry(){
+  async function addProgressEntry(){
     const weight = parseFloat(document.getElementById('progressWeightInput').value);
     if(!weight || weight <= 0){
       alert('Lütfen geçerli bir kilo değeri gir.');
       return;
     }
     if(!progressEntries[currentMemberName]) progressEntries[currentMemberName] = [];
+    const photoUrl = await uploadPhotoToStorage(pendingProgressPhoto, 'progress');
     progressEntries[currentMemberName].push({
       date: toLocalDateStr(getNow()),
       weight,
-      photo: pendingProgressPhoto,
+      photo: photoUrl,
     });
     progressEntries[currentMemberName].sort((a,b) => a.date.localeCompare(b.date));
     pendingProgressPhoto = null;
@@ -2685,13 +2716,7 @@
 
   // ---- Puan Sistemi & Sıralama ----
   function computeMealLogDays(memberName){
-    let mealsObj;
-    if(memberName === currentMemberName){
-      mealsObj = meals;
-    } else {
-      const log = adminMealLogs.find(l => l.member === memberName);
-      mealsObj = log ? log.meals : {};
-    }
+    const mealsObj = getMemberMeals(memberName);
     const dates = new Set();
     Object.values(mealsObj).forEach(arr => arr.forEach(m => { if(m.date) dates.add(m.date); }));
     return dates.size;
@@ -3068,7 +3093,7 @@
     const now = getNow();
     const todayStr = toLocalDateStr(now);
     const thisYear = now.getFullYear();
-    const birthday = memberProfile.birthday; // "YYYY-MM-DD"
+    const birthday = getMemberProfile(currentMemberName).birthday; // "YYYY-MM-DD"
     if(!birthday) return;
     const isBirthdayToday = birthday.slice(5,10) === todayStr.slice(5,10);
     if(isBirthdayToday && lastBirthdayYear !== thisYear){
@@ -3079,12 +3104,14 @@
     }
   }
   function getTodaysBirthdays(){
-    // Bu basit prototipte sadece canlı üyenin (Mert Aydın) doğum tarihi memberProfile'da tutuluyor.
+    // Artık her üyenin kendi profili ayrı tutulduğu için, TÜM üyeler arasında bugün doğum
+    // günü olanları buluyoruz (eskiden sadece o an giriş yapmış üye kontrol edilebiliyordu).
     const todayStr = toLocalDateStr(getNow());
     const result = [];
-    if(memberProfile.birthday && memberProfile.birthday.slice(5,10) === todayStr.slice(5,10)){
-      result.push(currentMemberName);
-    }
+    members.filter(m => m.role !== 'admin').forEach(m => {
+      const bday = memberProfiles[m.name] && memberProfiles[m.name].birthday;
+      if(bday && bday.slice(5,10) === todayStr.slice(5,10)) result.push(m.name);
+    });
     return result;
   }
 
@@ -3328,7 +3355,7 @@
     if(!el) return;
     const todayStr = toLocalDateStr(getNow());
     if(!selectedMealDate) selectedMealDate = todayStr;
-    const allDates = [...new Set(Object.values(meals).flat().map(m => m.date).filter(Boolean))].sort((a,b) => b.localeCompare(a));
+    const allDates = [...new Set(Object.values(getMemberMeals(currentMemberName)).flat().map(m => m.date).filter(Boolean))].sort((a,b) => b.localeCompare(a));
     if(!allDates.includes(todayStr)) allDates.unshift(todayStr);
     if(!allDates.includes(selectedMealDate)) selectedMealDate = todayStr;
     el.innerHTML = allDates.map(d => `
@@ -3340,6 +3367,7 @@
     renderMealDateTabs();
     const todayStr = toLocalDateStr(getNow());
     const isToday = selectedMealDate === todayStr;
+    const meals = getMemberMeals(currentMemberName);
     document.getElementById('mealBlocks').innerHTML = mealOrder.map((key,ki)=>{
       const dayItems = meals[key].map((m,i) => ({...m, origIndex:i})).filter(m => (m.date || todayStr) === selectedMealDate);
       return `
@@ -3654,7 +3682,7 @@
     }
   }
 
-  function confirmAddMeal(key, ki){
+  async function confirmAddMeal(key, ki){
     const nameEl = document.getElementById('addName-'+ki);
     const gramsEl = document.getElementById('addGrams-'+ki);
     const portionEl = document.getElementById('addPortion-'+ki);
@@ -3664,21 +3692,24 @@
     const portion = parseFloat(portionEl.value) || 1;
     const cal = parseInt(calEl.value, 10);
     if(!name){ nameEl.focus(); return; }
-    meals[key].push({ name, grams: grams || null, portion, cal: isNaN(cal) ? 0 : cal, photo: pendingMealPhoto, date: toLocalDateStr(getNow()) });
+    const photoUrl = await uploadPhotoToStorage(pendingMealPhoto, 'meals');
+    getMemberMeals(currentMemberName)[key].push({ name, grams: grams || null, portion, cal: isNaN(cal) ? 0 : cal, photo: photoUrl, date: toLocalDateStr(getNow()) });
     pendingMealPhoto = null;
     openAddForm = null;
     renderMeals();
     if(typeof renderDailyChecklist === 'function') renderDailyChecklist();
   }
 
-  function removeMeal(key, idx){ meals[key].splice(idx,1); renderMeals(); }
+  function removeMeal(key, idx){ getMemberMeals(currentMemberName)[key].splice(idx,1); renderMeals(); }
 
-  let trainerNote = "Bu hafta protein alımını biraz artırabilirsin, akşam öğünlerin hafif kalıyor. — Turgut"; // artık üyeye de gösterilir
+  // Önceden "trainerNote" tek bir ortak metindi — üye başına ayrı not tutuluyor artık.
+  let memberTrainerNotes = { "Mert Aydın": "Bu hafta protein alımını biraz artırabilirsin, akşam öğünlerin hafif kalıyor. — Turgut" };
 
   function renderTrainerNote(){
     const card = document.getElementById('trainerNoteCard');
     const textEl = document.getElementById('trainerNoteText');
     if(!card || !textEl) return;
+    const trainerNote = memberTrainerNotes[currentMemberName];
     if(trainerNote && trainerNote.trim()){
       card.style.display = 'block';
       textEl.textContent = trainerNote;
@@ -3690,7 +3721,7 @@
   function renderCalories(){
     const todayStr = toLocalDateStr(getNow());
     const dateToSum = selectedMealDate || todayStr;
-    const allItems = Object.values(meals).flat().filter(m => (m.date || todayStr) === dateToSum);
+    const allItems = Object.values(getMemberMeals(currentMemberName)).flat().filter(m => (m.date || todayStr) === dateToSum);
     const total = allItems.reduce((sum, m) => sum + (m.cal || 0), 0);
     document.getElementById('calorieCount').textContent = total;
     document.getElementById('calorieGoalLabel').textContent = calorieGoal;
@@ -3943,8 +3974,8 @@
     document.getElementById('healthDeclDetails').value = existingHealth ? (existingHealth.details || '') : '';
     document.getElementById('photoConsentCheckbox').checked = !!photoConsent[currentMemberName];
     populateGateBirthdateDropdowns();
-    if(memberProfile.birthday){
-      const [by, bm, bd] = memberProfile.birthday.split('-');
+    if(getMemberProfile(currentMemberName).birthday){
+      const [by, bm, bd] = getMemberProfile(currentMemberName).birthday.split('-');
       document.getElementById('gateBirthYear').value = String(parseInt(by,10));
       document.getElementById('gateBirthMonth').value = String(parseInt(bm,10));
       document.getElementById('gateBirthDay').value = String(parseInt(bd,10));
@@ -3953,7 +3984,7 @@
       document.getElementById('gateBirthMonth').value = '';
       document.getElementById('gateBirthDay').value = '';
     }
-    document.getElementById('gateBirthdateInput').value = memberProfile.birthday || '';
+    document.getElementById('gateBirthdateInput').value = getMemberProfile(currentMemberName).birthday || '';
     const existingEmergency = emergencyContacts[currentMemberName];
     document.getElementById('gateEmergencyName').value = existingEmergency ? existingEmergency.name : '';
     document.getElementById('gateEmergencyPhone').value = existingEmergency ? existingEmergency.phone : '';
@@ -4048,8 +4079,8 @@
     if(emergencyName || emergencyPhone){
       emergencyContacts[currentMemberName] = { name: emergencyName, phone: emergencyPhone };
     }
-    memberProfile.birthday = birthdateVal;
-    memberProfile.age = age;
+    getMemberProfile(currentMemberName).birthday = birthdateVal;
+    getMemberProfile(currentMemberName).age = age;
     if(isMinor){
       parentalConsents[currentMemberName] = {
         parentName: document.getElementById('gateParentName').value.trim(),
@@ -4238,11 +4269,12 @@
     const genderEl = document.getElementById('settingsGender');
     const phoneEl = document.getElementById('settingsPhone');
     const birthdayEl = document.getElementById('settingsBirthday');
-    if(nameEl) nameEl.value = memberProfile.name || '';
-    if(ageEl) ageEl.value = memberProfile.age || '';
-    if(genderEl) genderEl.value = memberProfile.gender || '';
-    if(phoneEl) phoneEl.value = memberProfile.phone || '';
-    if(birthdayEl) birthdayEl.value = memberProfile.birthday || '';
+    const settingsProfile = getMemberProfile(currentMemberName);
+    if(nameEl) nameEl.value = settingsProfile.name || '';
+    if(ageEl) ageEl.value = settingsProfile.age || '';
+    if(genderEl) genderEl.value = settingsProfile.gender || '';
+    if(phoneEl) phoneEl.value = settingsProfile.phone || '';
+    if(birthdayEl) birthdayEl.value = settingsProfile.birthday || '';
   }
   function closeSettings(){
     switchTab(lastActiveTab);
@@ -4372,10 +4404,17 @@
   }
 
   // ---- Yönetici girişi (kullanıcı adı + şifre ile, gizli tetikleyici ile açılır) ----
-  let memberProfile = { name: "Mert Aydın", photo: null, theme: "dark", age: null, gender: "", phone: "", birthday: null };
+  // Önceden tek bir "memberProfile" objesi vardı ve HERKES aynı yaş/cinsiyet/telefon/doğum
+  // tarihi/fotoğrafı paylaşıyordu (sadece o an giriş yapmış üyeye göre anlamlı oluyordu).
+  // Artık üye başına ayrı bir profil tutuluyor, çok sayıda üye eklendiğinde karışmaz.
+  let memberProfiles = { "Mert Aydın": { name: "Mert Aydın", photo: null, theme: "dark", age: null, gender: "", phone: "", birthday: null } };
+  function getMemberProfile(name){
+    if(!memberProfiles[name]) memberProfiles[name] = { name, photo: null, theme: "dark", age: null, gender: "", phone: "", birthday: null };
+    return memberProfiles[name];
+  }
 
   function setTheme(mode){
-    memberProfile.theme = mode;
+    getMemberProfile(currentMemberName).theme = mode;
     const phone = document.getElementById('phoneRoot');
     if(mode === 'light'){
       phone.classList.add('light');
@@ -4392,8 +4431,8 @@
     const file = event.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = function(e){
-      memberProfile.photo = e.target.result;
+    reader.onload = async function(e){
+      getMemberProfile(currentMemberName).photo = await uploadPhotoToStorage(e.target.result, 'profile');
       updateAvatarDisplays();
     };
     reader.readAsDataURL(file);
@@ -4405,11 +4444,12 @@
       document.getElementById('membershipAvatar'),
       document.getElementById('photoPreview'),
     ];
-    const initials = memberProfile.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+    const liveProfile = getMemberProfile(currentMemberName);
+    const initials = liveProfile.name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
     targets.forEach(el => {
       if(!el) return;
-      if(memberProfile.photo){
-        el.style.backgroundImage = `url(${memberProfile.photo})`;
+      if(liveProfile.photo){
+        el.style.backgroundImage = `url(${liveProfile.photo})`;
         el.style.backgroundSize = 'cover';
         el.style.backgroundPosition = 'center';
         el.textContent = '';
@@ -4419,10 +4459,10 @@
       }
     });
     document.querySelectorAll('.greeting').forEach(el => {
-      if(el.textContent.startsWith('Günaydın,')) el.textContent = 'Günaydın, ' + memberProfile.name.split(' ')[0];
+      if(el.textContent.startsWith('Günaydın,')) el.textContent = 'Günaydın, ' + liveProfile.name.split(' ')[0];
     });
     const memberNameEl = document.querySelector('.member-name');
-    if(memberNameEl) memberNameEl.textContent = memberProfile.name;
+    if(memberNameEl) memberNameEl.textContent = liveProfile.name;
   }
 
   function saveProfile(){
@@ -4431,11 +4471,12 @@
     const gender = document.getElementById('settingsGender').value;
     const phone = document.getElementById('settingsPhone').value.trim();
     const birthday = document.getElementById('settingsBirthday').value;
-    if(newName) memberProfile.name = newName;
-    memberProfile.age = age ? parseInt(age, 10) : null;
-    memberProfile.gender = gender;
-    memberProfile.phone = phone;
-    memberProfile.birthday = birthday || null;
+    const profile = getMemberProfile(currentMemberName);
+    if(newName) profile.name = newName;
+    profile.age = age ? parseInt(age, 10) : null;
+    profile.gender = gender;
+    profile.phone = phone;
+    profile.birthday = birthday || null;
     updateAvatarDisplays();
     document.getElementById('profileSaveMsg').textContent = 'Profilin güncellendi.';
   }
@@ -5307,7 +5348,7 @@
     };
     reader.readAsDataURL(file);
   }
-  function adminAddProgressEntry(){
+  async function adminAddProgressEntry(){
     const member = document.getElementById('progressAdminMember').value;
     const weight = parseFloat(document.getElementById('adminProgressWeightInput').value);
     if(!weight || weight <= 0){
@@ -5315,10 +5356,11 @@
       return;
     }
     if(!progressEntries[member]) progressEntries[member] = [];
+    const photoUrl = await uploadPhotoToStorage(pendingAdminProgressPhoto, 'progress');
     progressEntries[member].push({
       date: toLocalDateStr(getNow()),
       weight,
-      photo: pendingAdminProgressPhoto,
+      photo: photoUrl,
     });
     progressEntries[member].sort((a,b) => a.date.localeCompare(b.date));
     pendingAdminProgressPhoto = null;
@@ -6031,12 +6073,14 @@
       const left = pkg ? (pkg.unlimited ? Infinity : pkg.size - (pkg.used||0)) : null;
       const total = pkg ? (pkg.unlimited ? Infinity : pkg.size) : null;
       const isOpen = expandedMembers.has(m.name);
-      const mealLogIndex = adminMealLogs.findIndex(l => l.member === m.name);
-      const mealLog = mealLogIndex !== -1 ? adminMealLogs[mealLogIndex] : null;
+      const mealsForCard = getMemberMeals(m.name);
+      const hasMealEntries = Object.values(mealsForCard).some(arr => arr.length > 0);
+      const mealLogIndex = members.filter(x => x.role !== 'admin').findIndex(x => x.name === m.name);
 
+      const mProfile = getMemberProfile(m.name);
       const contact = [];
-      if(isLive && memberProfile.age) contact.push(`${memberProfile.age} yaş`);
-      if(isLive && memberProfile.gender) contact.push(memberProfile.gender);
+      if(mProfile.age) contact.push(`${mProfile.age} yaş`);
+      if(mProfile.gender) contact.push(mProfile.gender);
       if(m.phone) contact.push(m.phone);
 
       return `
@@ -6199,10 +6243,10 @@
           ` : ''}
 
           <button style="display:flex; align-items:center; justify-content:space-between; width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:9px; color:var(--chalk); font-size:12px; padding:10px 12px; cursor:pointer; text-align:left; font-family:var(--font-body); margin-top:10px;" onclick="toggleMealCard('${m.name}')">
-            <span>🍽️ Öğünler ${mealLog ? '' : '<span style="color:var(--muted); font-weight:400;">(kayıt yok)</span>'}</span>
+            <span>🍽️ Öğünler ${hasMealEntries ? '' : '<span style="color:var(--muted); font-weight:400;">(kayıt yok)</span>'}</span>
             <span style="color:var(--muted); transition:transform .15s; transform:rotate(${expandedMealCards.has(m.name) ? '90deg' : '0deg'});">›</span>
           </button>
-          ${expandedMealCards.has(m.name) ? `<div style="margin-top:8px;">${mealLog ? buildMealJournalHtml(mealLogIndex) : '<div class="meal-empty">Bu üye için öğün kaydı yok.</div>'}</div>` : ''}
+          ${expandedMealCards.has(m.name) ? `<div style="margin-top:8px;">${buildMealJournalHtml(mealLogIndex)}</div>` : ''}
         </div>
         ` : ''}
       </div>`;
@@ -6424,11 +6468,16 @@
   // ---- Ders Yönetimi: sınırsız ders ekleme ----
 
   // ---- Öğünler (member meal review + admin comments) ----
-  const adminMealLogs = [
-    { member: "Mert Aydın", meals: meals, comment: trainerNote },
-    { member: "Elif Kara", meals: { "Kahvaltı":[{name:"Simit, peynir",cal:310, date: toLocalDateStr(getNow())}], "Öğle":[{name:"Mercimek çorbası",cal:180, date: toLocalDateStr(getNow())}], "Akşam":[], "Ara Öğün":[] }, comment: "" },
-    { member: "Can Doğan", meals: { "Kahvaltı":[], "Öğle":[{name:"Döner porsiyon",cal:650, date: toLocalDateStr(getNow())}], "Akşam":[{name:"Izgara köfte, salata",cal:480, date: toLocalDateStr(getNow())}], "Ara Öğün":[{name:"Kola",cal:140, date: toLocalDateStr(getNow())}] }, comment: "" },
-  ];
+  // Önceden sadece 3 hardcoded (demo) üye için sabit bir liste vardı, gerçek üyeler eklendikçe
+  // hiç güncellenmiyordu. Artık kayıtlı TÜM gerçek üyeler için, her seferinde güncel verilerle
+  // yeniden üretiliyor.
+  function getAdminMealLogs(){
+    return members.filter(m => m.role !== 'admin').map(m => ({
+      member: m.name,
+      meals: getMemberMeals(m.name),
+      comment: memberTrainerNotes[m.name] || "",
+    }));
+  }
   // ---- Öğün Hatırlatma Saatleri (admin ayarlar, üyeye bildirim gider) ----
   let mealReminders = {};
   let firedMealReminders = new Set();
@@ -6578,7 +6627,7 @@
 
   let mealPhotoComments = {}; // { "member|date|itemIndex": "yorum metni" }
   function buildMealJournalHtml(li){
-    const log = adminMealLogs[li];
+    const log = getAdminMealLogs()[li];
     if(!log) return '';
     const items = Object.entries(log.meals).flatMap(([k,arr]) => arr.map(m => ({
       text: `${k}: ${m.name}${m.portion && m.portion !== 1 ? ` (${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})` : (m.grams ? ` (${m.grams}g)` : '')} — ${m.cal} kcal`,
@@ -6621,7 +6670,7 @@
       <button class="btn btn-brass admin-save-btn" onclick="saveAdminComment(${li})">Genel Notu Kaydet</button>`;
   }
   function renderAdminMeals(){
-    document.getElementById('adminMealList').innerHTML = adminMealLogs.map((log, li) => {
+    document.getElementById('adminMealList').innerHTML = getAdminMealLogs().map((log, li) => {
       const isOpen = expandedMealCards.has(log.member);
       return `
       <div class="admin-member-card">
@@ -6640,16 +6689,18 @@
     if(btn){ const old = btn.textContent; btn.textContent = 'Kaydedildi ✓'; setTimeout(() => btn.textContent = old, 1200); }
   }
   function adminSelectMealDate(li, date){
-    const log = adminMealLogs[li];
+    const log = getAdminMealLogs()[li];
+    if(!log) return;
     adminMealSelectedDate[log.member] = date;
     if(document.getElementById('adminMealList')) renderAdminMeals();
     if(document.getElementById('memberProfileList')) renderMemberProfiles();
   }
   function saveAdminComment(idx){
     const val = document.getElementById('commentBox-'+idx).value;
-    adminMealLogs[idx].comment = val;
-    if(adminMealLogs[idx].member === "Mert Aydın"){
-      trainerNote = val;
+    const log = getAdminMealLogs()[idx];
+    if(!log) return;
+    memberTrainerNotes[log.member] = val;
+    if(log.member === currentMemberName){
       if(typeof renderTrainerNote === 'function') renderTrainerNote();
     }
     alert('Not kaydedildi. Üye bu notu Beslenme sekmesinde görebilecek.');
@@ -7342,11 +7393,12 @@
       statusEl.textContent = `Bu üyeye henüz bir paket atanmadı. Haftalık limit: ${memberWeeklyLimits[member] || weeklyLimit} gün`;
       weeklyInput.value = memberWeeklyLimits[member] || weeklyLimit;
     }
-    if(member === currentMemberName){
+    {
+      const mProfile = getMemberProfile(member);
       const contact = [];
-      if(memberProfile.age) contact.push(`👤 ${memberProfile.age} yaş`);
-      if(memberProfile.gender) contact.push(`⚧ ${memberProfile.gender}`);
-      if(memberProfile.phone) contact.push(`📞 ${memberProfile.phone}`);
+      if(mProfile.age) contact.push(`👤 ${mProfile.age} yaş`);
+      if(mProfile.gender) contact.push(`⚧ ${mProfile.gender}`);
+      if(mProfile.phone) contact.push(`📞 ${mProfile.phone}`);
       if(contact.length){
         contactEl.style.display = 'block';
         contactEl.innerHTML = `<b style="color:var(--brass); font-size:11px; letter-spacing:.5px;">ÜYE BİLGİLERİ</b><br>${contact.join(' &nbsp;·&nbsp; ')}`;
@@ -7354,10 +7406,7 @@
         contactEl.style.display = 'block';
         contactEl.innerHTML = `<b style="color:var(--brass); font-size:11px; letter-spacing:.5px;">ÜYE BİLGİLERİ</b><br><span style="color:var(--muted);">Üye henüz Ayarlar'dan yaş/cinsiyet/telefon girmedi.</span>`;
       }
-    } else {
-      contactEl.style.display = 'none';
     }
-    endInput.value = pkg ? pkg.end : '';
     renderMemberRequests(member);
 
     const noteInput = document.getElementById('editMemberNoteInput');
@@ -7401,7 +7450,7 @@
     const lines = [
       `Üye: ${member}`,
       `Telefon: ${m ? (m.phone || '—') : '—'}`,
-      `Doğum Tarihi: ${memberProfile.birthday && member === currentMemberName ? formatDateTrLong(memberProfile.birthday) : '—'}`,
+      `Doğum Tarihi: ${getMemberProfile(member).birthday ? formatDateTrLong(getMemberProfile(member).birthday) : '—'}`,
       `Onay Durumu: ${accepted ? `Onaylandı (v${contractAcceptedVersion[member] || 1}) — ${acceptedDate ? formatDateTrLong(acceptedDate) : 'tarih kaydedilmemiş'}` : 'Henüz onaylanmadı'}`,
       `Sağlık Beyanı: ${health ? (health.hasCondition ? ('Rahatsızlık belirtildi: ' + (health.details || 'detay girilmedi')) : 'Bilinen bir rahatsızlığı yok') : 'Beyan yok'}`,
       `Acil Durum Kişisi: ${emergency ? `${emergency.name} — ${emergency.phone}` : '—'}`,
