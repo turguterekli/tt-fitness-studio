@@ -98,19 +98,23 @@
        Üst bar (Anasayfa/Arama başlıkları vb.), telefonun gerçek çentiği/durum çubuğu/Dynamic
        Island'ının arkasında kalıp tıklanamaz olmasın diye fazladan güvenli alan payı alıyor. */
     html, body{
-      position:fixed; inset:0; width:100%; height:100%;
-      overflow:hidden; overscroll-behavior:none; touch-action:pan-y;
+      position:fixed !important; inset:0 !important; width:100% !important; height:100% !important;
+      overflow:hidden !important; overscroll-behavior:none; touch-action:pan-y;
     }
-    body{ padding:0; margin:0; display:block; }
+    body{ padding:0 !important; margin:0 !important; display:block !important; }
     .phone{
-      position:absolute; inset:0; width:100%; height:100%;
-      max-width:100%; max-height:100%;
-      border-radius:0; border:none; box-shadow:none;
+      position:absolute !important; inset:0 !important; width:100% !important; height:100% !important;
+      max-width:100% !important; max-height:100% !important;
+      border-radius:0 !important; border:none !important; box-shadow:none !important;
     }
-    .topbar{ padding-top:calc(18px + env(safe-area-inset-top)); }
-    .app-header{ padding-top:calc(20px + env(safe-area-inset-top)); }
-    .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)); overscroll-behavior:contain; }
-    .tabbar{ padding-bottom:calc(14px + env(safe-area-inset-bottom)); }
+    /* !important: bu değerler dosyanın aşağısındaki genel .topbar/.screen/.tabbar
+       tanımlarıyla (padding kısayolu kullandıkları için) eziliyordu — güvenli alan
+       payı hiç uygulanmıyordu, bu yüzden üst bar durum çubuğunun altında kalıp
+       tıklanamıyor, alt kısımda da boşluk kalıyordu. */
+    .topbar{ padding-top:calc(18px + env(safe-area-inset-top)) !important; }
+    .app-header{ padding-top:calc(20px + env(safe-area-inset-top)) !important; }
+    .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)) !important; overscroll-behavior:contain; }
+    .tabbar{ padding-bottom:calc(14px + env(safe-area-inset-bottom)) !important; }
   }
   /* Butonlara/sekmelere dokununca 300ms'lik gecikme ya da çift-dokunuşla yakınlaştırma
      olmasın diye — normal bir uygulamadaki gibi anında tepki versin. */
