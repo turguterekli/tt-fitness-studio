@@ -6116,6 +6116,10 @@
         ${isOpen ? `
         <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
           <div class="admin-sub" style="margin-bottom:5px; font-size:11px;">${contact.join(' · ') || 'İletişim bilgisi yok'}</div>
+          <div style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
+            <input type="text" id="cardNewPassword-${mi}" class="calc-input" placeholder="Yeni şifre belirle" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
+            <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminSetMemberPassword('${m.name}', ${mi})">🔑 Şifreyi Değiştir</button>
+          </div>
           ${isVipMember(m) ? `<div style="font-size:10.5px; color:var(--brass); font-weight:600; margin-bottom:5px;">⭐ Sadık Üye — ${formatDateTr(m.joinDate)} tarihinden beri üye</div>` : ''}
           ${!memberHasAnyTrainer(m.name) ? '<div style="font-size:10.5px; color:var(--red); font-weight:600; margin-bottom:5px;">⚠️ Antrenör atanmadı</div>' : ''}
 
@@ -6613,6 +6617,19 @@
     renderMemberProfiles();
     renderEditMemberStatus();
     if(member === currentMemberName) renderMembership();
+  }
+  // Admin üyenin şifresini doğrudan kartından değiştirebilir — "şifremi unuttum" akışı
+  // farklı cihaz/sekmeler arasında Firestore senkronu birkaç saniye sürebildiği için,
+  // üye giriş yapamadığında en hızlı ve güvenilir çözüm bu.
+  function adminSetMemberPassword(member, mi){
+    const input = document.getElementById('cardNewPassword-'+mi);
+    const val = input ? input.value.trim() : '';
+    if(!val){ alert('Lütfen yeni bir şifre gir.'); return; }
+    const m = members.find(x => x.name === member);
+    if(!m){ alert('Üye bulunamadı.'); return; }
+    m.password = val;
+    if(input) input.value = '';
+    alert(`${member} için yeni şifre kaydedildi: ${val}\nBunu üyeye ilet.`);
   }
   let expandedMemberProgram = new Set();
   let expandedMemberWater = new Set();
