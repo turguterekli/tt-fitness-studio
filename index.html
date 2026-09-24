@@ -3385,6 +3385,7 @@
     const todayStr = toLocalDateStr(getNow());
     const isToday = selectedMealDate === todayStr;
     const meals = getMemberMeals(currentMemberName);
+    const foodNameOptionsHtml = Object.keys(foodCalorieDB).sort((a,b)=>a.localeCompare(b,'tr')).map(k => `<option value="${k}">`).join('');
     document.getElementById('mealBlocks').innerHTML = mealOrder.map((key,ki)=>{
       const dayItems = meals[key].map((m,i) => ({...m, origIndex:i})).filter(m => (m.date || todayStr) === selectedMealDate);
       return `
@@ -3407,7 +3408,8 @@
         `).join('') : '<div class="meal-empty">Bu gün için bir şey eklenmedi.</div>'}
         ${isToday && openAddForm===ki ? `
           <div class="add-meal-form">
-            <input type="text" id="addName-${ki}" class="calc-input" placeholder="Ne yedin / içtin?" style="margin-bottom:8px; width:100%;" oninput="estimateCalorie(${ki})">
+            <input type="text" id="addName-${ki}" class="calc-input" placeholder="Ne yedin / içtin?" style="margin-bottom:8px; width:100%;" list="foodSuggestList-${ki}" autocomplete="off" oninput="estimateCalorie(${ki})">
+            <datalist id="foodSuggestList-${ki}">${foodNameOptionsHtml}</datalist>
             <div style="display:flex; gap:8px; margin-bottom:4px;">
               <span style="flex:1; font-size:10.5px; color:var(--muted);">Gramaj (g)</span>
               <span style="flex:1; font-size:10.5px; color:var(--muted);">Porsiyon</span>
@@ -3543,6 +3545,79 @@
     // İçecekler
     "kola": 42, "meyve suyu": 45, "çay": 1, "türk kahvesi": 2, "limonata": 40,
     "enerji içeceği": 45, "gazoz": 41, "maden suyu": 0, "smoothie": 60,
+
+    // Soslar / Ekstralar
+    "pesto sos": 303, "pesto": 303, "ketçap": 101, "mayonez": 680, "hardal": 66,
+    "humus": 166, "tzatziki": 90, "barbekü sos": 172, "acı sos": 20, "buffalo sos": 90,
+    "soya sosu": 53, "zeytinyağı": 884, "sarımsak sosu": 460, "ranch sos": 470,
+    "tahin": 595, "tahin pekmez": 380, "pekmez": 292, "bal": 304, "reçel": 278,
+    "nutella": 539, "fıstık ezmesi sos": 588, "acı biber sosu": 25, "cheddar sos": 240,
+    "yoğurtlu sos": 65, "salata sosu": 350, "sirke": 19, "limon suyu": 22,
+
+
+    // Genişletilmiş liste (ek yiyecek/içecek/tatlı/dünya mutfağı)
+    "kapya biber": 26, "çarliston biber": 24, "pazı": 19, "roka": 25,
+    "tere": 32, "maydanoz": 36, "dereotu": 43, "nane": 44,
+    "reyhan": 22, "kişniş": 23, "kereviz sapı": 16, "bamya": 33,
+    "semizotu": 16, "kabak çiçeği": 26, "turp": 16, "şalgam": 28,
+    "yer elması": 73, "zencefil": 80, "enginar": 47, "yaban mersini": 57,
+    "ahududu": 52, "böğürtlen": 43, "nektarin": 44, "ayva": 57,
+    "cennet hurması": 70, "dut": 43, "kumkat": 71, "kuskus": 112,
+    "arpa": 123, "çavdar": 335, "karabuğday": 92, "glutensiz ekmek": 250,
+    "tam tahıllı makarna": 124, "tortilla": 218, "lavaş": 275, "yufka": 320,
+    "mısır ekmeği": 245, "mısır unu": 361, "pirinç unu": 366, "hindi kıyma": 176,
+    "ördek": 337, "bıldırcın": 227, "yılan balığı": 184, "alabalık": 148,
+    "uskumru": 205, "palamut": 158, "lüfer": 121, "mezgit": 90,
+    "istavrit": 114, "kalkan": 81, "dil balığı": 91, "ahtapot": 82,
+    "deniz tarağı": 74, "istiridye": 68, "yengeç": 87, "sahanda yumurta": 196,
+    "çılbır": 150, "kaygana": 210, "kefir": 41, "süzme yoğurt": 97,
+    "light yoğurt": 45, "tulum peyniri": 320, "hellim": 321, "mozzarella": 280,
+    "parmesan": 431, "cheddar peyniri": 402, "rikotta": 174, "keçi peyniri": 364,
+    "koyun peyniri": 265, "krem peynir": 342, "light peynir": 180, "kuru köfte": 270,
+    "çiğ köfte": 180, "mücver": 165, "etli nohut": 150, "etli kuru fasulye": 145,
+    "biber dolması": 130, "yaprak sarma": 155, "etli taze fasulye": 95, "patates yemeği": 110,
+    "ıspanak yemeği": 85, "pırasa yemeği": 95, "kereviz yemeği": 90, "güveç": 140,
+    "tas kebabı": 190, "orman kebabı": 210, "çökertme kebabı": 260, "testi kebabı": 220,
+    "tarhana çorbası": 55, "düğün çorbası": 90, "kelle paça çorbası": 110, "balık çorbası": 70,
+    "yoğurt çorbası": 50, "brokoli çorbası": 45, "kremalı mantar çorbası": 85, "sebze çorbası": 40,
+    "sucuklu yumurta": 230, "kavurma": 320, "bal kaymak": 350, "siyah zeytin": 115,
+    "yeşil zeytin": 145, "açma": 330, "çörek": 340, "gözleme": 220,
+    "peynirli gözleme": 250, "patatesli gözleme": 200, "kumpir": 150, "profiterol": 300,
+    "tiramisu": 283, "cheesecake": 321, "browni": 466, "kek": 371,
+    "muffin": 377, "donut": 452, "cupcake": 305, "kurabiye": 480,
+    "un kurabiyesi": 470, "çikolatalı kurabiye": 488, "gofret": 495, "lokma": 320,
+    "tulumba": 290, "şekerpare": 300, "aşure": 130, "güllaç": 160,
+    "trileçe": 280, "magnolia": 250, "supangle": 220, "puding": 110,
+    "muhallebi": 100, "keşkül": 130, "döner dürüm": 240, "tavuk dürüm": 210,
+    "burrito": 206, "taco": 226, "quesadilla": 280, "sushi": 150,
+    "sushi roll": 145, "wrap": 220, "falafel": 333, "shawarma": 230,
+    "lazanya": 135, "risotto": 130, "paella": 158, "tavuk curry": 165,
+    "pad thai": 180, "pho": 90, "dumplings": 200, "spring roll": 154,
+    "nachos": 346, "guacamole": 160, "greek salad": 80, "caesar salad": 190,
+    "poke bowl": 120, "ramen": 90, "noodle": 138, "boza": 90,
+    "şalgam suyu": 20, "buzlu çay": 30, "ice latte": 45, "latte": 45,
+    "cappuccino": 40, "americano": 2, "espresso": 3, "filtre kahve": 2,
+    "sıcak çikolata": 90, "süt kahve": 50, "milkshake": 112, "protein shake": 100,
+    "kombucha": 30, "taze sıkılmış portakal suyu": 45, "elma suyu": 46, "nar suyu": 54,
+    "vişne suyu": 58, "şeftali suyu": 48, "ananas suyu": 53, "protein bar": 380,
+    "protein tozu": 380, "granola bar": 410, "enerji barı": 400, "kuruyemiş karışımı": 570,
+    "leblebi": 350, "kestane": 213, "kavrulmuş badem": 590, "kavrulmuş fındık": 646,
+    "acılı ezme": 95, "cacık": 45, "haydari": 90, "muhammara": 280,
+    "ezme salata": 60, "patlıcan salatası": 110, "közlenmiş biber salatası": 60, "közlenmiş patlıcan salatası": 90,
+    "yoğurtlu patlıcan": 95, "hindistancevizi": 354, "hindistancevizi sütü": 230, "chia tohumu": 486,
+    "keten tohumu": 534, "susam": 573, "amarant": 371, "badem sütü": 17,
+    "yulaf sütü": 47, "soya sütü": 33, "laktozsuz süt": 42, "keçi sütü": 69,
+    "manda sütü": 97, "krem şanti": 257, "margarin": 717, "zeytinyağlı yaprak sarma": 180,
+    "zeytinyağlı barbunya": 130, "zeytinyağlı pırasa": 75, "zeytinyağlı bakla": 105, "bakla": 88,
+    "bezelyeli pilav": 160, "nohutlu pilav": 165, "iç pilav": 190, "şehriyeli pilav": 155,
+    "arpa şehriyeli çorba": 55, "kebab tabağı": 230, "gyro": 230, "tavuk kanat (buffalo)": 260,
+    "soğan halkası": 411, "mozzarella çubuğu": 297, "poutine": 190, "club sandviç": 260,
+    "avokado tost": 180, "bagel": 250, "bagel sandviç": 230, "acai bowl": 120,
+    "smoothie bowl": 110, "overnight oats": 90, "protein pankek": 190, "chia puding": 130,
+    "ekler": 300, "opera pasta": 380, "red velvet pasta": 350, "havuçlu kek": 320,
+    "makaron": 400, "churros": 420, "beignet": 380, "midye dolma": 130,
+    "kokoreç": 280, "çiğ köfte dürüm": 190, "balık ekmek": 210, "tantuni": 210,
+    "cağ kebabı": 250, "pilav üstü döner": 230,
   };
 
   // Yaygın besinlerin ortalama porsiyon/gramaj değerleri (gram) — üye yazınca otomatik doldurulur, istersen değiştirebilirsin.
@@ -3628,6 +3703,79 @@
     // İçecekler
     "kola": 330, "meyve suyu": 200, "çay": 200, "türk kahvesi": 60, "limonata": 250,
     "enerji içeceği": 250, "gazoz": 330, "maden suyu": 200, "smoothie": 250,
+
+    // Soslar / Ekstralar (1 yemek kaşığı ≈ 15g baz alınarak)
+    "pesto sos": 15, "pesto": 15, "ketçap": 15, "mayonez": 15, "hardal": 10,
+    "humus": 30, "tzatziki": 30, "barbekü sos": 15, "acı sos": 10, "buffalo sos": 15,
+    "soya sosu": 10, "zeytinyağı": 10, "sarımsak sosu": 15, "ranch sos": 15,
+    "tahin": 15, "tahin pekmez": 20, "pekmez": 15, "bal": 15, "reçel": 15,
+    "nutella": 15, "fıstık ezmesi sos": 15, "acı biber sosu": 10, "cheddar sos": 20,
+    "yoğurtlu sos": 20, "salata sosu": 15, "sirke": 10, "limon suyu": 10,
+
+
+    // Genişletilmiş liste eşleşen porsiyon gramajları
+    "kapya biber": 100, "çarliston biber": 100, "pazı": 150, "roka": 50,
+    "tere": 30, "maydanoz": 20, "dereotu": 20, "nane": 10,
+    "reyhan": 10, "kişniş": 10, "kereviz sapı": 80, "bamya": 150,
+    "semizotu": 100, "kabak çiçeği": 100, "turp": 60, "şalgam": 100,
+    "yer elması": 150, "zencefil": 10, "enginar": 120, "yaban mersini": 100,
+    "ahududu": 100, "böğürtlen": 100, "nektarin": 140, "ayva": 150,
+    "cennet hurması": 150, "dut": 100, "kumkat": 60, "kuskus": 150,
+    "arpa": 150, "çavdar": 75, "karabuğday": 150, "glutensiz ekmek": 30,
+    "tam tahıllı makarna": 200, "tortilla": 50, "lavaş": 60, "yufka": 60,
+    "mısır ekmeği": 40, "mısır unu": 100, "pirinç unu": 100, "hindi kıyma": 120,
+    "ördek": 150, "bıldırcın": 100, "yılan balığı": 150, "alabalık": 180,
+    "uskumru": 150, "palamut": 150, "lüfer": 180, "mezgit": 150,
+    "istavrit": 150, "kalkan": 150, "dil balığı": 150, "ahtapot": 120,
+    "deniz tarağı": 100, "istiridye": 80, "yengeç": 100, "sahanda yumurta": 60,
+    "çılbır": 200, "kaygana": 150, "kefir": 200, "süzme yoğurt": 150,
+    "light yoğurt": 150, "tulum peyniri": 30, "hellim": 40, "mozzarella": 30,
+    "parmesan": 15, "cheddar peyniri": 25, "rikotta": 50, "keçi peyniri": 30,
+    "koyun peyniri": 30, "krem peynir": 20, "light peynir": 30, "kuru köfte": 150,
+    "çiğ köfte": 150, "mücver": 150, "etli nohut": 250, "etli kuru fasulye": 250,
+    "biber dolması": 200, "yaprak sarma": 150, "etli taze fasulye": 250, "patates yemeği": 250,
+    "ıspanak yemeği": 200, "pırasa yemeği": 200, "kereviz yemeği": 200, "güveç": 300,
+    "tas kebabı": 250, "orman kebabı": 250, "çökertme kebabı": 250, "testi kebabı": 300,
+    "tarhana çorbası": 250, "düğün çorbası": 250, "kelle paça çorbası": 300, "balık çorbası": 250,
+    "yoğurt çorbası": 250, "brokoli çorbası": 250, "kremalı mantar çorbası": 250, "sebze çorbası": 250,
+    "sucuklu yumurta": 150, "kavurma": 100, "bal kaymak": 60, "siyah zeytin": 30,
+    "yeşil zeytin": 30, "açma": 70, "çörek": 70, "gözleme": 150,
+    "peynirli gözleme": 150, "patatesli gözleme": 150, "kumpir": 350, "profiterol": 100,
+    "tiramisu": 100, "cheesecake": 100, "browni": 60, "kek": 80,
+    "muffin": 70, "donut": 60, "cupcake": 60, "kurabiye": 40,
+    "un kurabiyesi": 40, "çikolatalı kurabiye": 40, "gofret": 30, "lokma": 80,
+    "tulumba": 80, "şekerpare": 60, "aşure": 200, "güllaç": 150,
+    "trileçe": 100, "magnolia": 100, "supangle": 120, "puding": 150,
+    "muhallebi": 150, "keşkül": 150, "döner dürüm": 250, "tavuk dürüm": 250,
+    "burrito": 250, "taco": 120, "quesadilla": 180, "sushi": 200,
+    "sushi roll": 150, "wrap": 220, "falafel": 100, "shawarma": 250,
+    "lazanya": 250, "risotto": 250, "paella": 300, "tavuk curry": 250,
+    "pad thai": 300, "pho": 350, "dumplings": 150, "spring roll": 100,
+    "nachos": 150, "guacamole": 50, "greek salad": 200, "caesar salad": 200,
+    "poke bowl": 350, "ramen": 350, "noodle": 200, "boza": 200,
+    "şalgam suyu": 200, "buzlu çay": 250, "ice latte": 300, "latte": 250,
+    "cappuccino": 200, "americano": 200, "espresso": 30, "filtre kahve": 200,
+    "sıcak çikolata": 200, "süt kahve": 200, "milkshake": 300, "protein shake": 300,
+    "kombucha": 250, "taze sıkılmış portakal suyu": 200, "elma suyu": 200, "nar suyu": 150,
+    "vişne suyu": 200, "şeftali suyu": 200, "ananas suyu": 200, "protein bar": 50,
+    "protein tozu": 30, "granola bar": 35, "enerji barı": 40, "kuruyemiş karışımı": 30,
+    "leblebi": 30, "kestane": 100, "kavrulmuş badem": 30, "kavrulmuş fındık": 30,
+    "acılı ezme": 50, "cacık": 150, "haydari": 50, "muhammara": 40,
+    "ezme salata": 80, "patlıcan salatası": 100, "közlenmiş biber salatası": 100, "közlenmiş patlıcan salatası": 100,
+    "yoğurtlu patlıcan": 100, "hindistancevizi": 30, "hindistancevizi sütü": 200, "chia tohumu": 15,
+    "keten tohumu": 15, "susam": 10, "amarant": 150, "badem sütü": 200,
+    "yulaf sütü": 200, "soya sütü": 200, "laktozsuz süt": 200, "keçi sütü": 200,
+    "manda sütü": 200, "krem şanti": 20, "margarin": 10, "zeytinyağlı yaprak sarma": 150,
+    "zeytinyağlı barbunya": 200, "zeytinyağlı pırasa": 200, "zeytinyağlı bakla": 200, "bakla": 150,
+    "bezelyeli pilav": 200, "nohutlu pilav": 200, "iç pilav": 200, "şehriyeli pilav": 200,
+    "arpa şehriyeli çorba": 250, "kebab tabağı": 300, "gyro": 250, "tavuk kanat (buffalo)": 150,
+    "soğan halkası": 100, "mozzarella çubuğu": 100, "poutine": 250, "club sandviç": 250,
+    "avokado tost": 150, "bagel": 90, "bagel sandviç": 200, "acai bowl": 300,
+    "smoothie bowl": 300, "overnight oats": 200, "protein pankek": 150, "chia puding": 200,
+    "ekler": 70, "opera pasta": 90, "red velvet pasta": 100, "havuçlu kek": 90,
+    "makaron": 15, "churros": 80, "beignet": 60, "midye dolma": 150,
+    "kokoreç": 150, "çiğ köfte dürüm": 180, "balık ekmek": 220, "tantuni": 200,
+    "cağ kebabı": 200, "pilav üstü döner": 300,
   };
 
   function normalizeTr(s){
@@ -4288,10 +4436,11 @@
     const phoneEl = document.getElementById('settingsPhone');
     const birthdayEl = document.getElementById('settingsBirthday');
     const settingsProfile = getMemberProfile(currentMemberName);
+    const meObj = members.find(x => x.name === currentMemberName);
     if(nameEl) nameEl.value = settingsProfile.name || '';
     if(ageEl) ageEl.value = settingsProfile.age || '';
     if(genderEl) genderEl.value = settingsProfile.gender || '';
-    if(phoneEl) phoneEl.value = settingsProfile.phone || '';
+    if(phoneEl) phoneEl.value = settingsProfile.phone || (meObj ? meObj.phone : '') || '';
     if(birthdayEl) birthdayEl.value = settingsProfile.birthday || '';
   }
   function closeSettings(){
@@ -4495,8 +4644,21 @@
     profile.gender = gender;
     profile.phone = phone;
     profile.birthday = birthday || null;
+    // Buradaki telefon, üyenin GİRİŞ yaparken kullandığı asıl telefon numarasıyla (members[].phone)
+    // senkron tutulmalı — aksi halde üye numarasını burada günceller ama girişte eski numara istenir.
+    let phoneChanged = false;
+    if(phone){
+      const meObj = members.find(x => x.name === currentMemberName);
+      if(meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
+        meObj.phone = phone;
+        phoneChanged = true;
+        try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: meObj.phone })); }catch(e){}
+      }
+    }
     updateAvatarDisplays();
-    document.getElementById('profileSaveMsg').textContent = 'Profilin güncellendi.';
+    document.getElementById('profileSaveMsg').textContent = phoneChanged
+      ? 'Profilin güncellendi. Not: giriş yaparken artık bu yeni telefon numarasını kullan.'
+      : 'Profilin güncellendi.';
   }
 
   function changePassword(){
@@ -7438,10 +7600,12 @@
     }
     {
       const mProfile = getMemberProfile(member);
+      const mObj = members.find(x => x.name === member);
       const contact = [];
       if(mProfile.age) contact.push(`👤 ${mProfile.age} yaş`);
       if(mProfile.gender) contact.push(`⚧ ${mProfile.gender}`);
-      if(mProfile.phone) contact.push(`📞 ${mProfile.phone}`);
+      const shownPhone = mProfile.phone || (mObj ? mObj.phone : '');
+      if(shownPhone) contact.push(`📞 ${shownPhone}`);
       if(contact.length){
         contactEl.style.display = 'block';
         contactEl.innerHTML = `<b style="color:var(--brass); font-size:11px; letter-spacing:.5px;">ÜYE BİLGİLERİ</b><br>${contact.join(' &nbsp;·&nbsp; ')}`;
