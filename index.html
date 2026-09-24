@@ -2018,8 +2018,11 @@
   let selectedDay = 0;
   let sessionsTotal = 12, sessionsUsed = 4;
   let weeklyLimit = 3, weeklyUsed = 2;
-  let calorieGoal = 2000;
-  let memberGoal = 'maintain'; // 'lose' | 'maintain' | 'lean_gain' | 'gain' — kalori hesaplayıcıdan seçilir, rozetleri de etkiler
+  // calorieGoal ve memberGoal de eskiden tek bir ortak değerdi — artık üye profilinin
+  // içinde (getMemberProfile) üye başına ayrı tutuluyor, aşağıdaki iki sabit sadece
+  // hiç ayarlanmamış bir üye için varsayılan değer olarak kullanılıyor.
+  const DEFAULT_CALORIE_GOAL = 2000;
+  const DEFAULT_MEMBER_GOAL = 'maintain'; // 'lose' | 'maintain' | 'lean_gain' | 'gain'
 
   // ---- Öğün Tavsiyeleri (isteğe bağlı, amaca göre) ----
   let mealSuggestionsEnabled = false;
@@ -2067,7 +2070,7 @@
     // Öğlen 13:00 civarında, günde sadece 1 kez
     if(now.getHours() === 13 && lastMealSuggestionDate !== todayStr){
       lastMealSuggestionDate = todayStr;
-      const options = mealSuggestionsByGoal[memberGoal] || mealSuggestionsByGoal.maintain;
+      const options = mealSuggestionsByGoal[getMemberProfile(currentMemberName).goal || DEFAULT_MEMBER_GOAL] || mealSuggestionsByGoal.maintain;
       const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
       const msg = options[dayOfYear % options.length];
       pushNotification('mealsuggestion-'+todayStr, '🍽️', msg);
@@ -2646,6 +2649,18 @@
     return Object.values(attendanceLog).filter(v => v.member === memberName && v.status === 'done').length;
   }
 
+  // Haftalık kullanım (weeklyUsed) eskiden hiçbir zaman gerçek katılım verisinden hesaplanmıyordu —
+  // sabit bir demo sayısıydı (2), hiç değişmiyordu. Artık bu haftaki gerçek "geldi" kayıtlarından
+  // (attendanceLog) kaç FARKLI günde ders alındığını sayıyoruz.
+  function computeWeeklyUsed(memberName){
+    const thisMonday = getWeekMonday(toLocalDateStr(getNow()));
+    const daysThisWeek = new Set();
+    Object.values(attendanceLog).forEach(v => {
+      if(v.member === memberName && v.status === 'done' && getWeekMonday(v.date) === thisMonday) daysThisWeek.add(v.date);
+    });
+    return daysThisWeek.size;
+  }
+
   function computeWeekStreak(memberName){
     const weeks = new Set();
     Object.values(attendanceLog).forEach(v => {
@@ -2681,6 +2696,7 @@
     if(streakLabel) streakLabel.textContent = streak > 0 ? `🔥 ${streak} hafta seri` : '';
 
     // Kilo rozetleri artık üyenin amacına göre — amacın tersine giden değişim rozet kazandırmaz
+    const memberGoal = getMemberProfile(currentMemberName).goal || DEFAULT_MEMBER_GOAL;
     let weightBadges = [];
     if(memberGoal === 'lose'){
       weightBadges = weightBadgeDefs.filter(b => b.type === 'loss').map(b => ({...b, earned: weightDiff <= -b.threshold}));
@@ -2958,6 +2974,7 @@
 
   function renderMembership(){
     const pkg = memberPackages[currentMemberName];
+    weeklyUsed = computeWeeklyUsed(currentMemberName);
     const left = sessionsTotal - sessionsUsed;
     document.getElementById('sessionsLeftNum').textContent = pkg && pkg.unlimited ? '∞' : left;
     document.getElementById('sessionsBar').style.width = pkg && pkg.unlimited ? '100%' : (Math.min(100, (sessionsUsed/sessionsTotal)*100) + '%');
@@ -3723,6 +3740,7 @@
     const dateToSum = selectedMealDate || todayStr;
     const allItems = Object.values(getMemberMeals(currentMemberName)).flat().filter(m => (m.date || todayStr) === dateToSum);
     const total = allItems.reduce((sum, m) => sum + (m.cal || 0), 0);
+    const calorieGoal = getMemberProfile(currentMemberName).calorieGoal || DEFAULT_CALORIE_GOAL;
     document.getElementById('calorieCount').textContent = total;
     document.getElementById('calorieGoalLabel').textContent = calorieGoal;
     document.getElementById('calorieBar').style.width = Math.min(100, (total/calorieGoal)*100) + '%';
@@ -3822,8 +3840,8 @@
     let target = tdee + adjustment;
     target = Math.max(1200, target); // güvenlik için çok düşük bir hedefe inmesin
 
-    calorieGoal = target;
-    memberGoal = goal;
+    getMemberProfile(currentMemberName).calorieGoal = target;
+    getMemberProfile(currentMemberName).goal = goal;
     renderCalories();
     renderBadges();
     if(typeof renderLeaderboard === 'function') renderLeaderboard();
@@ -6075,7 +6093,7 @@
       const isOpen = expandedMembers.has(m.name);
       const mealsForCard = getMemberMeals(m.name);
       const hasMealEntries = Object.values(mealsForCard).some(arr => arr.length > 0);
-      const mealLogIndex = members.filter(x => x.role !== 'admin').findIndex(x => x.name === m.name);
+      const mealLogIndex = getScopedRealMembers().findIndex(x => x.name === m.name);
 
       const mProfile = getMemberProfile(m.name);
       const contact = [];
@@ -6471,8 +6489,16 @@
   // Önceden sadece 3 hardcoded (demo) üye için sabit bir liste vardı, gerçek üyeler eklendikçe
   // hiç güncellenmiyordu. Artık kayıtlı TÜM gerçek üyeler için, her seferinde güncel verilerle
   // yeniden üretiliyor.
+  // Kısıtlı antrenör hesabı (örn. Seray) sadece kendi üyelerini görsün — bu liste hem
+  // getAdminMealLogs() hem de üye kartındaki sıra numarası (mealLogIndex) tarafından
+  // kullanılıyor, ikisi de AYNI fonksiyondan geldiği için sıraları asla kaymaz.
+  function getScopedRealMembers(){
+    let list = members.filter(m => m.role !== 'admin');
+    if(adminTrainerScope) list = list.filter(m => memberHasTrainer(m.name, adminTrainerScope) || !memberHasAnyTrainer(m.name));
+    return list;
+  }
   function getAdminMealLogs(){
-    return members.filter(m => m.role !== 'admin').map(m => ({
+    return getScopedRealMembers().map(m => ({
       member: m.name,
       meals: getMemberMeals(m.name),
       comment: memberTrainerNotes[m.name] || "",
