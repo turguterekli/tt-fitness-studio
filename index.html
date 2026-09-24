@@ -1919,11 +1919,21 @@
     }
   }
 
+  // Her autosave döngüsü kendi "tick" fonksiyonunu burada kayıt ettirir — böylece önemli bir
+  // kayıt işleminden hemen sonra (F5'e basılmadan önce) elle "şimdi kaydet" tetiklenebilir.
+  // Aksi halde değişiklik en fazla 1000ms'lik döngü aralığını beklemek zorunda kalıyordu ve
+  // kullanıcı o arada sayfayı yenilerse (F5) henüz buluta yazılmamış değişiklik kayboluyordu.
+  let autosaveFlushers = [];
+  function registerAutosaveFlusher(fn){ autosaveFlushers.push(fn); }
+  async function flushAllAutosaves(){
+    for(const fn of autosaveFlushers){ try{ await fn(); }catch(e){} }
+  }
+
   // Basit otomatik kayıt: her birkaç saniyede bir dizide değişiklik olup olmadığına bakar,
   // değiştiyse tüm kayıtları Firestore'a yazar (üye/antrenör ekleme, düzenleme dahil).
   function startAutosave(arrRef, collectionName){
     let lastJSON = JSON.stringify(arrRef);
-    setInterval(async () => {
+    const tick = async () => {
       if(!cloudReady) return;
       const json = JSON.stringify(arrRef);
       if(json === lastJSON) return;
@@ -1942,13 +1952,15 @@
         await batch.commit();
         showSaved();
       }catch(err){ console.error(collectionName + ' kaydedilemedi:', err); showSaveFailed(err.message); }
-    }, 1000);
+    };
+    setInterval(tick, 1000);
+    registerAutosaveFlusher(tick);
   }
   // Tek bir bulut belgesinde tutulan sözlük/obje verileri için otomatik kayıt (örn. paket/ders hakları)
   function startAutosaveObject(objRef, docPath){
     let lastJSON = JSON.stringify(objRef);
     console.log('[autosave] izlemeye başladı:', docPath, lastJSON);
-    setInterval(async () => {
+    const tick = async () => {
       if(!cloudReady) return;
       const json = JSON.stringify(objRef);
       if(json === lastJSON) return;
@@ -1957,7 +1969,9 @@
       showSaving();
       try{ await db.doc(docPath).set(sanitizeForFirestore(objRef)); console.log('[autosave] YAZILDI:', docPath); showSaved(); }
       catch(err){ console.error('[autosave] ' + docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
-    }, 1000);
+    };
+    setInterval(tick, 1000);
+    registerAutosaveFlusher(tick);
   }
   // Onlarca farklı veri listesini (duyurular, ödemeler, mesajlar, notlar, sözleşmeler vb.)
   // tek bir bulut belgesine, değişiklik olduğunda topluca kaydeder.
@@ -1968,7 +1982,7 @@
       return JSON.stringify(obj);
     };
     let lastJSON = snapshot();
-    setInterval(async () => {
+    const tick = async () => {
       if(!cloudReady) return;
       const json = snapshot();
       if(json === lastJSON) return;
@@ -1980,7 +1994,9 @@
         await db.collection('app_data').doc('appState').set(sanitizeForFirestore(payload));
         showSaved();
       }catch(err){ console.error('appState kaydedilemedi:', err); showSaveFailed(err.message); }
-    }, 1000);
+    };
+    setInterval(tick, 1000);
+    registerAutosaveFlusher(tick);
   }
   // Kayıt sürerken sayfa kapatılır/yenilenirse tarayıcı uyarsın (masaüstünde çalışır, bazı
   // mobil tarayıcılarda görünmeyebilir ama zarar vermez).
@@ -2083,10 +2099,26 @@
   // Artık üye başına ayrı bir öğün günlüğü tutuluyor.
   let memberMeals = {
     "Mert Aydın": {
-      "Kahvaltı": [{name:"Yulaf ezmesi", cal:220, date: toLocalDateStr(getNow())}, {name:"2 haşlanmış yumurta", cal:150, date: toLocalDateStr(getNow())}],
-      "Öğle": [{name:"Tavuklu salata", cal:420, date: toLocalDateStr(getNow()), photo: demoMealPhotoSvg}],
-      "Akşam": [],
-      "Ara Öğün": [{name:"Badem (bir avuç)", cal:170, date: toLocalDateStr(getNow())}]
+      "Kahvaltı": [
+        {name:"Yulaf ezmesi", cal:220, date: toLocalDateStr(getNow())},
+        {name:"2 haşlanmış yumurta", cal:150, date: toLocalDateStr(getNow())},
+        {name:"Simit", cal:275, date: toLocalDateStr(new Date(getNow().getTime() - 86400000))},
+        {name:"Peynir (30g)", cal:84, date: toLocalDateStr(new Date(getNow().getTime() - 86400000))},
+        {name:"Menemen", cal:180, date: toLocalDateStr(new Date(getNow().getTime() - 2*86400000))}
+      ],
+      "Öğle": [
+        {name:"Tavuklu salata", cal:420, date: toLocalDateStr(getNow()), photo: demoMealPhotoSvg},
+        {name:"Mercimek çorbası", cal:110, date: toLocalDateStr(new Date(getNow().getTime() - 86400000))},
+        {name:"Izgara tavuk, pilav", cal:520, date: toLocalDateStr(new Date(getNow().getTime() - 2*86400000))}
+      ],
+      "Akşam": [
+        {name:"Izgara somon, salata", cal:380, date: toLocalDateStr(new Date(getNow().getTime() - 86400000))},
+        {name:"Sebzeli makarna", cal:340, date: toLocalDateStr(new Date(getNow().getTime() - 2*86400000))}
+      ],
+      "Ara Öğün": [
+        {name:"Badem (bir avuç)", cal:170, date: toLocalDateStr(getNow())},
+        {name:"Elma", cal:52, date: toLocalDateStr(new Date(getNow().getTime() - 86400000))}
+      ]
     }
   };
   function getMemberMeals(name){
@@ -3863,6 +3895,7 @@
     openAddForm = null;
     renderMeals();
     if(typeof renderDailyChecklist === 'function') renderDailyChecklist();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
   }
 
   function removeMeal(key, idx){ getMemberMeals(currentMemberName)[key].splice(idx,1); renderMeals(); }
@@ -3993,6 +4026,7 @@
     renderCalories();
     renderBadges();
     if(typeof renderLeaderboard === 'function') renderLeaderboard();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     document.getElementById('calcResult').textContent =
       `Bazal metabolizman (BMR): ${Math.round(bmr)} kcal · Bakım kalorin (TDEE): ${tdee} kcal · Amacın "${goalLabels[goal]}" olduğu için günlük hedefin ${target} kcal olarak kaydedildi.`;
   }
@@ -4656,6 +4690,7 @@
       }
     }
     updateAvatarDisplays();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     document.getElementById('profileSaveMsg').textContent = phoneChanged
       ? 'Profilin güncellendi. Not: giriş yaparken artık bu yeni telefon numarasını kullan.'
       : 'Profilin güncellendi.';
@@ -6791,6 +6826,7 @@
     if(!m){ alert('Üye bulunamadı.'); return; }
     m.password = val;
     if(input) input.value = '';
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     alert(`${member} için yeni şifre kaydedildi: ${val}\nBunu üyeye ilet.`);
   }
   let expandedMemberProgram = new Set();
