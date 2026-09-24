@@ -960,7 +960,33 @@
 
   </div>
 
-  <!-- ================= TAB BAR ================= -->
+    <!-- ================= TAB BAR ================= -->
+    <!-- Bu bölüm daha önce sadece bir yorum satırıydı, içi hiç doldurulmamıştı — CSS ve
+         switchTab() zaten bunu bekliyordu ama gerçek bir sekme çubuğu hiç var olmadığı için
+         sayfa içeriği kısa olduğunda altta boş/siyah bir alan kalıyordu. Alt sekme çubuğu artık
+         gerçekten var; ekranı sabitliyor ve gezinmeyi kolaylaştırıyor. -->
+    <div class="tabbar">
+      <button class="tab active" data-view="home" onclick="switchTab('home', this)">
+        <span style="font-size:19px; line-height:1;">🏠</span>
+        <span>Ana Sayfa</span>
+      </button>
+      <button class="tab" data-view="program" onclick="switchTab('program', this)">
+        <span style="font-size:19px; line-height:1;">📅</span>
+        <span>Program</span>
+      </button>
+      <button class="tab" data-view="nutrition" onclick="switchTab('nutrition', this)">
+        <span style="font-size:19px; line-height:1;">🍽️</span>
+        <span>Beslenme</span>
+      </button>
+      <button class="tab" data-view="membership" onclick="switchTab('membership', this)">
+        <span style="font-size:19px; line-height:1;">💳</span>
+        <span>Üyelik</span>
+      </button>
+      <button class="tab" data-view="progress" onclick="switchTab('progress', this)">
+        <span style="font-size:19px; line-height:1;">📈</span>
+        <span>Gelişim</span>
+      </button>
+    </div>
   </div>
 
   <!-- ================= ADMIN / SALON PANELİ ================= -->
@@ -1692,6 +1718,30 @@
 
     </div>
 
+    <!-- Admin tarafında da aynı sebeple (kısa sayfalarda altta boş/siyah alan kalması) alt sekme
+         çubuğu ekliyoruz — kalan ekranlara (Analiz, Finans, Ayarlar vb.) hâlâ ☰ menüden ulaşılır. -->
+    <div class="tabbar">
+      <button class="tab admin-tab active" onclick="switchAdminTab('home', this)">
+        <span style="font-size:19px; line-height:1;">🏠</span>
+        <span>Ana Sayfa</span>
+      </button>
+      <button class="tab admin-tab" onclick="switchAdminTab('members', this)">
+        <span style="font-size:19px; line-height:1;">👥</span>
+        <span>Üyeler</span>
+      </button>
+      <button class="tab admin-tab" onclick="switchAdminTab('classes', this)">
+        <span style="font-size:19px; line-height:1;">📅</span>
+        <span>Dersler</span>
+      </button>
+      <button class="tab admin-tab" onclick="switchAdminTab('announce', this)">
+        <span style="font-size:19px; line-height:1;">📢</span>
+        <span>Duyuru</span>
+      </button>
+      <button class="tab admin-tab" onclick="toggleAdminNavDrawer()">
+        <span style="font-size:19px; line-height:1;">☰</span>
+        <span>Daha Fazla</span>
+      </button>
+    </div>
   </div>
 
   <!-- ================= ÇIKIŞ YAPILDI EKRANI ================= -->
@@ -1754,10 +1804,19 @@
   // Böylece hem fotoğraflar kalıcı olur hem de Firestore belgeleri şişip bozulmaz.
   async function uploadPhotoToStorage(dataUrl, folder){
     if(!dataUrl || !dataUrl.startsWith('data:')) return dataUrl; // zaten bir URL ise (önceden yüklenmiş) olduğu gibi bırak
-    const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-    const ref = storage.ref().child(path);
-    await ref.putString(dataUrl, 'data_url');
-    return await ref.getDownloadURL();
+    try{
+      const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+      const ref = storage.ref().child(path);
+      await ref.putString(dataUrl, 'data_url');
+      return await ref.getDownloadURL();
+    }catch(err){
+      // Fotoğraf yüklenemezse (Storage kapalı/izin hatası/internet vb.) SESSİZCE takılıp
+      // kalmasın — kullanıcıya haber ver ve kaydın geri kalanının (kalori, ders vb.)
+      // fotoğrafsız da olsa kaydedilebilmesi için null döndür.
+      console.error('Fotoğraf buluta yüklenemedi:', err);
+      alert('Fotoğraf yüklenemedi (bağlantı ya da sunucu sorunu olabilir). Kayıt fotoğrafsız devam ediyor, tekrar deneyebilirsin.');
+      return null;
+    }
   }
 
   // Firestore, bir dizinin içine doğrudan başka bir dizi konulmasına izin vermiyor
@@ -3478,7 +3537,7 @@
               <button class="btn btn-ghost" style="flex:1; font-size:12.5px;" onclick="document.getElementById('addPhoto-${ki}').click()">📷 Fotoğraf Ekle</button>
               <img id="addPhotoPreview-${ki}" style="display:none; width:38px; height:38px; border-radius:8px; object-fit:cover;">
             </div>
-            <button class="btn btn-brass btn-full" onclick="confirmAddMeal('${key}', ${ki})">Ekle</button>
+            <button class="btn btn-brass btn-full" id="confirmAddMealBtn-${ki}" onclick="confirmAddMeal('${key}', ${ki})">Ekle</button>
             <div id="addHint-${ki}" style="font-size:11px; color:var(--muted); margin-top:8px;">Yemek adını yazdıkça gramaj ve kaloriyi tahmin etmeye çalışırım, istersen kendin de değiştirebilirsin.</div>
           </div>
         ` : ''}
@@ -3498,12 +3557,34 @@
     }
   }
 
+  // Telefon kamerasından gelen fotoğraflar ham haliyle birkaç MB olabiliyor — bunu olduğu
+  // gibi yüklemeye çalışmak yavaş internette çok uzun sürüyor (hatta zaman aşımına uğrayıp
+  // hiç yanıt vermiyormuş gibi görünüyordu). Yüklemeden önce makul bir boyuta küçültüyoruz.
+  function resizeImageDataUrl(dataUrl, maxDim, quality){
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = function(){
+        let { width, height } = img;
+        if(width > maxDim || height > maxDim){
+          if(width > height){ height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality || 0.7));
+      };
+      img.onerror = function(){ resolve(dataUrl); }; // küçültülemezse orijinaliyle devam et
+      img.src = dataUrl;
+    });
+  }
+
   function handleMealPhoto(event, ki){
     const file = event.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = function(e){
-      pendingMealPhoto = e.target.result;
+    reader.onload = async function(e){
+      pendingMealPhoto = await resizeImageDataUrl(e.target.result, 1000, 0.7);
       const preview = document.getElementById('addPhotoPreview-'+ki);
       preview.src = pendingMealPhoto;
       preview.style.display = 'inline-block';
@@ -3908,6 +3989,10 @@
     const portion = parseFloat(portionEl.value) || 1;
     const cal = parseInt(calEl.value, 10);
     if(!name){ nameEl.focus(); return; }
+    // Fotoğraf yükleniyorken (özellikle yavaş internette) buton tıklanabilir/boş görünüp
+    // "yanıt vermiyor" izlenimi vermesin diye kısa süreliğine devre dışı bırakıp metnini değiştiriyoruz.
+    const addBtn = document.getElementById('confirmAddMealBtn-'+ki);
+    if(addBtn){ addBtn.disabled = true; addBtn.textContent = pendingMealPhoto ? 'Fotoğraf yükleniyor…' : 'Ekleniyor…'; }
     const photoUrl = await uploadPhotoToStorage(pendingMealPhoto, 'meals');
     getMemberMeals(currentMemberName)[key].push({ name, grams: grams || null, portion, cal: isNaN(cal) ? 0 : cal, photo: photoUrl, date: toLocalDateStr(getNow()) });
     pendingMealPhoto = null;
