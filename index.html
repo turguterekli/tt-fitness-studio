@@ -3297,7 +3297,12 @@
         const occDate = occurrenceDateTimeThisWeek(entry.day, entry.time);
         const dateKey = toLocalDateStr(occDate);
         const logKey = `${member}|${entry.day}|${entry.time}|${dateKey}`;
-        if(now >= occDate && !attendanceLog[logKey]){
+        // Üyenin paketi bu tarihten SONRA başladıysa (örn. programı hafta ortasında atadık ve
+        // bu haftanın daha önceki günleri zaten geçmişse), o geçmiş günü otomatik "geldi" sayıp
+        // ders hakkından düşmemeliyiz — paket henüz o gün yokken bir ders tüketilmiş olmaz.
+        const pkgForMember = memberPackages[member];
+        const beforePackageStart = pkgForMember && pkgForMember.start && dateKey < pkgForMember.start;
+        if(now >= occDate && !attendanceLog[logKey] && !beforePackageStart){
           // Katılım onayında "Katılamayacağım" dese bile ders hakkı düşer — grup seansları için de geçerli:
           // seans tutulduysa (saat geçtiyse) tek kişi bile gelse herkesin hakkı düşer.
           attendanceLog[logKey] = {
@@ -6323,6 +6328,12 @@
         ${isOpen ? `
         <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
           <div class="admin-sub" style="margin-bottom:5px; font-size:11px;">${contact.join(' · ') || 'İletişim bilgisi yok'}</div>
+          ${m.status === 'pending' ? `
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; padding:8px 10px; background:var(--panel-2); border-radius:9px;">
+            <span style="font-size:10.5px; color:var(--muted);">⏳ Aktivasyon bekliyor${m.activationCode ? ` · kod: <b style="color:var(--brass); letter-spacing:1px;">${m.activationCode}</b>` : ''}</span>
+            <button class="btn btn-brass" style="font-size:10.5px; padding:6px 10px; white-space:nowrap;" onclick="adminActivateMember('${m.name}')">Aktive Et</button>
+          </div>
+          ` : ''}
           <div style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
             <input type="text" id="cardNewPassword-${mi}" class="calc-input" placeholder="Yeni şifre belirle" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
             <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminSetMemberPassword('${m.name}', ${mi})">🔑 Şifreyi Değiştir</button>
