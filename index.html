@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!-- Ana ekrana eklenmiş uygulama bazen eski sürümü önbellekten göstermeye devam edebiliyor
+     (silip tekrar eklemeyi gerektiren asıl sebep budur) — bu etiketler tarayıcıyı sayfayı
+     önbelleğe almaması için uyarıyor, güncellemelerin daha güvenilir yansımasına yardımcı olur. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>TT Fitness Studio</title>
 
 <!-- PWA: Ana ekrana eklendiğinde gerçek bir uygulama gibi açılması için -->
@@ -113,8 +119,17 @@
        tıklanamıyor, alt kısımda da boşluk kalıyordu. */
     .topbar{ padding-top:calc(18px + env(safe-area-inset-top)) !important; }
     .app-header{ padding-top:calc(20px + env(safe-area-inset-top)) !important; }
-    .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)) !important; overscroll-behavior:contain; }
-    .tabbar{ padding-bottom:calc(14px + env(safe-area-inset-bottom)) !important; }
+    /* Alt sekme çubuğunu flex akışına bırakmak yerine doğrudan ekranın en altına sabitliyoruz
+       (position:fixed) — bu sayede yükseklik hesaplamasında ufak bir sapma olsa bile altta
+       siyah/boş bir şerit KALMASI mümkün değil, çubuk her zaman tam ekranın dibinde durur.
+       İçeriğin (.screen) bu sabit çubuğun ARKASINDA kalmaması için altına yeterli boşluk
+       payı veriyoruz. */
+    .screen{ padding-bottom:calc(110px + env(safe-area-inset-bottom)) !important; overscroll-behavior:contain; }
+    .tabbar{
+      position:fixed !important; left:0 !important; right:0 !important; bottom:0 !important;
+      padding-bottom:calc(14px + env(safe-area-inset-bottom)) !important;
+      z-index:40;
+    }
   }
   /* Butonlara/sekmelere dokununca 300ms'lik gecikme ya da çift-dokunuşla yakınlaştırma
      olmasın diye — normal bir uygulamadaki gibi anında tepki versin. */
