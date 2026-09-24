@@ -4540,10 +4540,17 @@
       return;
     }
     if(found.status === 'pending'){
-      errorEl.textContent = 'Hesabın henüz aktif değil. Salon yönetiminden aldığın kodla önce aktivasyonu tamamlaman gerekiyor.';
-      return;
-    }
-    if(found.password !== password){
+      // Üye, admin'in kendisine verdiği aktivasyon kodunu şifre olarak girdiyse hesabı burada
+      // otomatik aktive ediyoruz — önceden bu adım admin panelinde elle onay gerektiriyordu ve
+      // üye doğru kodu girse bile "hesap aktif değil" mesajı değişmiyordu.
+      if(found.activationCode && password === found.activationCode){
+        found.status = 'active';
+        if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+      } else {
+        errorEl.textContent = 'Hesabın henüz aktif değil. Salon yönetiminden aldığın kodu şifre olarak girerek aktive edebilirsin.';
+        return;
+      }
+    } else if(found.password !== password){
       errorEl.textContent = 'Şifre hatalı. Tekrar dene.';
       return;
     }
@@ -4908,6 +4915,7 @@
     if(typeof renderAnnounceForm === 'function') renderAnnounceForm();
     if(typeof renderMealReminderForm === 'function') renderMealReminderForm();
     if(typeof renderProgressAdminMemberSelect === 'function') renderProgressAdminMemberSelect();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
 
     const resultEl = document.getElementById('newMemberResult');
     resultEl.style.display = 'block';
@@ -5313,6 +5321,7 @@
     if(typeof renderAnnounceForm === 'function') renderAnnounceForm();
     if(typeof renderMealReminderForm === 'function') renderMealReminderForm();
     if(typeof renderProgressAdminMemberSelect === 'function') renderProgressAdminMemberSelect();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
 
     document.getElementById('newMemberReferralCode').value = '';
     document.getElementById('newMemberName').value = '';
@@ -5329,6 +5338,7 @@
     renderConsumption();
     if(typeof renderMemberProfiles === 'function') renderMemberProfiles();
     if(typeof renderAnalytics === 'function') renderAnalytics();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     if(rowId){
       const rowEl = document.getElementById(rowId);
       if(rowEl){
