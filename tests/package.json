@@ -1,0 +1,10 @@
+{
+  "name": "tt-fitness-tests",
+  "private": true,
+  "description": "Uygulamayı sahte (in-memory) Firebase ile tarayıcıda test eder — canlı veritabanına dokunmaz.",
+  "scripts": {
+    "test": "node flow.test.js && node sync.test.js",
+    "smoke": "node smoke.test.js member && node smoke.test.js admin && node smoke.test.js admin2"
+  },
+  "dependencies": { "jspdf": "2.5.1", "playwright": "^1.40.0" }
+}
