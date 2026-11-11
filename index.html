@@ -962,6 +962,12 @@
       </div>
 
       <div class="card">
+        <a href="privacy-policy.html" target="_blank" rel="noopener" style="display:flex; justify-content:space-between; align-items:center; color:var(--chalk); text-decoration:none; font-size:13px;">
+          <span>🔐 Gizlilik Politikası (KVKK)</span><span style="color:var(--muted);">›</span>
+        </a>
+      </div>
+
+      <div class="card">
         <button class="btn btn-full" id="logoutBtn" style="background:none; border:1px solid var(--red); color:#e2664e;" onclick="showLogoutConfirm()">Çıkış Yap</button>
         <div id="logoutConfirmBox" style="display:none; margin-top:12px; text-align:center;">
           <div style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Çıkış yapmak istediğine emin misin?</div>
@@ -1862,6 +1868,15 @@
     return value;
   }
 
+  // Kullanıcının yazdığı serbest metinleri (mesaj, öğün adı, not vb.) ekrana HTML olarak
+  // basmadan önce güvenli hale getirir — aksi halde mesaja yazılan <img onerror=...> gibi
+  // bir içerik yönetici ekranında kod olarak çalışabiliyordu (XSS).
+  function escapeHtml(value){
+    return String(value == null ? '' : value)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
   function hideCloudLoading(){
     const el = document.getElementById('cloudLoadingOverlay');
     if(el) el.style.display = 'none';
@@ -2485,6 +2500,7 @@
     }
 
     const target = memberMealTargets[currentMemberName] || mealOrder.length;
+    const meals = getMemberMeals(currentMemberName);
     const categoriesLoggedToday = mealOrder.filter(key => (meals[key] || []).some(m => (m.date || todayStr) === todayStr)).length;
     const mealsComplete = categoriesLoggedToday >= target;
     if(mealsComplete){
@@ -3510,9 +3526,17 @@
     const todayStr = toLocalDateStr(getNow());
     const isToday = selectedMealDate === todayStr;
     const meals = getMemberMeals(currentMemberName);
+    // Antrenörün öğün fotoğraflarına bıraktığı yorumlar "üye|tarih|sıra" anahtarıyla tutuluyor;
+    // sıra, o günün tüm öğünleri (kategori sırasıyla) düz bir listeye dizildiğindeki konum.
+    const dayFlatItems = Object.entries(meals).flatMap(([k,arr]) => arr.filter(m => (m.date || todayStr) === selectedMealDate));
+    const photoCommentFor = (m) => {
+      const idx = dayFlatItems.indexOf(m);
+      if(idx < 0) return '';
+      return mealPhotoComments[`${currentMemberName}|${selectedMealDate}|${idx}`] || '';
+    };
     const foodNameOptionsHtml = Object.keys(foodCalorieDB).sort((a,b)=>a.localeCompare(b,'tr')).map(k => `<option value="${k}">`).join('');
     document.getElementById('mealBlocks').innerHTML = mealOrder.map((key,ki)=>{
-      const dayItems = meals[key].map((m,i) => ({...m, origIndex:i})).filter(m => (m.date || todayStr) === selectedMealDate);
+      const dayItems = meals[key].map((m,i) => ({...m, origIndex:i, photoComment: photoCommentFor(m)})).filter(m => (m.date || todayStr) === selectedMealDate);
       return `
       <div class="meal-block">
         <div class="meal-head">
@@ -3523,13 +3547,14 @@
           <div class="meal-item">
             <span style="display:flex; align-items:center; gap:8px;">
               ${m.photo ? `<img src="${m.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; flex-shrink:0;">` : ''}
-              <span>${m.name}${m.portion && m.portion !== 1 ? ` <span style="color:var(--muted); font-size:11px;">(${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})</span>` : (m.grams ? ` <span style="color:var(--muted); font-size:11px;">(${m.grams}g)</span>` : '')}</span>
+              <span>${escapeHtml(m.name)}${m.portion && m.portion !== 1 ? ` <span style="color:var(--muted); font-size:11px;">(${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})</span>` : (m.grams ? ` <span style="color:var(--muted); font-size:11px;">(${m.grams}g)</span>` : '')}</span>
             </span>
             <span style="display:flex; align-items:center; gap:10px;">
               <span style="color:var(--brass); font-weight:600; font-size:12.5px;">${m.cal} kcal</span>
               <button class="rm" onclick="removeMeal('${key}', ${m.origIndex})">✕</button>
             </span>
           </div>
+          ${m.photoComment ? `<div style="font-size:11px; color:var(--brass); margin:-2px 0 8px 38px; line-height:1.5;">💬 Antrenör: ${escapeHtml(m.photoComment)}</div>` : ''}
         `).join('') : '<div class="meal-empty">Bu gün için bir şey eklenmedi.</div>'}
         ${isToday && openAddForm===ki ? `
           <div class="add-meal-form">
@@ -4182,7 +4207,7 @@
     el.innerHTML = thread.length ? thread.map(m => `
       <div style="display:flex; ${m.from === 'member' ? 'justify-content:flex-end;' : 'justify-content:flex-start;'} margin-bottom:8px;">
         <div style="max-width:75%; padding:8px 12px; border-radius:14px; font-size:12.5px; background:${m.from === 'member' ? 'var(--brass)' : 'var(--panel-2)'}; color:${m.from === 'member' ? '#171208' : 'var(--chalk)'};">
-          ${m.text}
+          ${escapeHtml(m.text)}
           <div style="font-size:9px; opacity:0.6; margin-top:3px;">${m.from === 'member' ? 'Sen' : 'Salon Yönetimi'} · ${formatDateTr(m.date)} ${m.time || ''}</div>
         </div>
       </div>`).join('') : '<div class="meal-empty">Henüz mesajlaşma yok. İlk mesajını gönder.</div>';
@@ -4205,7 +4230,7 @@
           <span class="admin-row-name">${m.name} ${unread ? '<span style="color:var(--red);">●</span>' : ''}</span>
           <span style="color:var(--muted); font-size:14px;">›</span>
         </div>
-        ${last ? `<div style="font-size:11px; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${last.from === 'member' ? '' : 'Sen: '}${last.text}</div>` : '<div style="font-size:11px; color:var(--muted); margin-top:4px;">Henüz mesaj yok</div>'}
+        ${last ? `<div style="font-size:11px; color:var(--muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${last.from === 'member' ? '' : 'Sen: '}${escapeHtml(last.text)}</div>` : '<div style="font-size:11px; color:var(--muted); margin-top:4px;">Henüz mesaj yok</div>'}
       </div>`;
     }).join('');
     updateAdminUnreadBadge();
@@ -4233,7 +4258,7 @@
     el.innerHTML = thread.length ? thread.map(m => `
       <div style="display:flex; ${m.from === 'admin' ? 'justify-content:flex-end;' : 'justify-content:flex-start;'} margin-bottom:8px;">
         <div style="max-width:75%; padding:8px 12px; border-radius:14px; font-size:12.5px; background:${m.from === 'admin' ? 'var(--brass)' : 'var(--panel-2)'}; color:${m.from === 'admin' ? '#171208' : 'var(--chalk)'};">
-          ${m.text}
+          ${escapeHtml(m.text)}
           <div style="font-size:9px; opacity:0.6; margin-top:3px;">${m.from === 'admin' ? 'Sen' : adminMessagesSelectedMember} · ${formatDateTr(m.date)} ${m.time || ''}</div>
         </div>
       </div>`).join('') : '<div class="meal-empty">Henüz mesaj yok.</div>';
@@ -6180,7 +6205,7 @@
       return `
       <div class="admin-member-card">
         <div class="admin-sub" style="margin-bottom:4px; font-size:10.5px; color:var(--brass); font-weight:600;">${label} · ${formatDateTr(a.date)}</div>
-        <div style="font-size:12.5px;">${a.message}</div>
+        <div style="font-size:12.5px;">${escapeHtml(a.message)}</div>
       </div>`;
     }).join('') : '<div class="meal-empty">Henüz duyuru gönderilmedi.</div>';
   }
@@ -7006,7 +7031,7 @@
     const log = getAdminMealLogs()[li];
     if(!log) return '';
     const items = Object.entries(log.meals).flatMap(([k,arr]) => arr.map(m => ({
-      text: `${k}: ${m.name}${m.portion && m.portion !== 1 ? ` (${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})` : (m.grams ? ` (${m.grams}g)` : '')} — ${m.cal} kcal`,
+      text: `${k}: ${escapeHtml(m.name)}${m.portion && m.portion !== 1 ? ` (${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})` : (m.grams ? ` (${m.grams}g)` : '')} — ${m.cal} kcal`,
       photo: m.photo || null,
       date: m.date || toLocalDateStr(getNow()),
     })));
@@ -7036,13 +7061,13 @@
             </div>
             ${t.photo ? `
             <div style="display:flex; gap:6px;">
-              <input type="text" class="calc-input" id="photoComment-${li}-${ti}" placeholder="Bu fotoğrafa yorum yaz..." value="${(mealPhotoComments[commentKey]||'').replace(/"/g,'')}" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
+              <input type="text" class="calc-input" id="photoComment-${li}-${ti}" placeholder="Bu fotoğrafa yorum yaz..." value="${escapeHtml(mealPhotoComments[commentKey]||'')}" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
               <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 10px;" onclick="savePhotoComment('${commentKey}', ${li}, ${ti})">Kaydet</button>
             </div>` : ''}
           </div>`;
         }).join('') : ''}
       ` : '<div class="meal-empty">Henüz öğün girmedi.</div>'}
-      <textarea class="admin-textarea" id="commentBox-${li}" placeholder="Bu üyenin beslenmesine dair genel not yaz..." style="margin-top:10px;">${log.comment}</textarea>
+      <textarea class="admin-textarea" id="commentBox-${li}" placeholder="Bu üyenin beslenmesine dair genel not yaz..." style="margin-top:10px;">${escapeHtml(log.comment)}</textarea>
       <button class="btn btn-brass admin-save-btn" onclick="saveAdminComment(${li})">Genel Notu Kaydet</button>`;
   }
   function renderAdminMeals(){
