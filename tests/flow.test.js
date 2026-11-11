@@ -13,7 +13,15 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('contract gate shown', await page.isVisible('#view-contractgate'));
   await page.selectOption('#gateBirthDay', '5'); await page.selectOption('#gateBirthMonth', '3'); await page.selectOption('#gateBirthYear', '1995');
   await page.check('#contractAcceptCheckbox');
+  check('contract alone is not enough (KVKK is a separate box)', await page.isDisabled('#contractAcceptBtn'));
+  await page.check('#kvkkReadCheckbox');
   check('accept btn enabled', !(await page.isDisabled('#contractAcceptBtn')));
+  await page.check('#healthDeclHas');
+  await page.waitForTimeout(100);
+  check('health condition requires separate consent', await page.isDisabled('#contractAcceptBtn'));
+  await page.fill('#healthDeclDetails', 'diz sakatlığı');
+  await page.check('#healthConsentCheckbox');
+  check('accept btn enabled with health consent', !(await page.isDisabled('#contractAcceptBtn')));
   await page.click('#contractAcceptBtn');
   check('onboarding shown', await page.isVisible('#onboardingOverlay'));
   for (let i=0;i<4;i++) await page.click('#onboardingNextBtn');
@@ -41,6 +49,12 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('meal persisted', persisted.meals >= 1, JSON.stringify(persisted));
   check('message persisted', persisted.msgs === 1);
   check('birthday persisted', persisted.bday === '1995-03-05');
+  const consent = await page.evaluate(() => ({ rec: consentRecords[currentMemberName], health: healthDeclarations[currentMemberName] }));
+  check('consents recorded separately', consent.rec && consent.rec.contract && consent.rec.kvkkRead && consent.rec.health === true && consent.rec.photo === false, JSON.stringify(consent.rec));
+  await page.evaluate(() => openSettings());
+  await page.uncheck('#settingsHealthConsent');
+  check('withdrawing health consent deletes health declaration', await page.evaluate(() => consentRecords[currentMemberName].health === false && !healthDeclarations[currentMemberName]));
+  await flush(); await page.waitForTimeout(300);
   await page.evaluate(() => { getMemberMeals(currentMemberName)['Öğle'].push({name:'Salata', cal:200, portion:1, photo:'https://example.invalid/p.jpg', date: toLocalDateStr(getNow())}); });
   await flush(); await page.waitForTimeout(200);
   // 6. logout -> admin
@@ -81,6 +95,20 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('member sees trainer photo comment', (await page.textContent('#mealBlocks')).includes('Antrenör: Güzel <i>tabak</i>'));
   await page.evaluate(() => openMemberSubScreen('messages'));
   check('member sees admin reply', (await page.textContent('#myMessageThread')).includes('görüşürüz'));
+  // Giriş kaydı ve hatalı deneme sınırı
+  await page.evaluate(() => logOut());
+  for (let i = 0; i < 5; i++) await login(page, 'admin1', 'yanlis' + i);
+  check('locked after 5 wrong passwords', (await page.textContent('#loginError')).includes('Çok fazla hatalı deneme'));
+  await login(page, 'admin1', 'tt2026');
+  check('correct password refused while locked', await page.isVisible('#logged-out-screen'));
+  await page.evaluate(() => localStorage.removeItem('ttf_login_fail'));
+  await login(page, 'admin1', 'tt2026');
+  await page.evaluate(() => openAdminSettings());
+  const logText = await page.textContent('#loginLogList');
+  check('admin sees login log (failed + successful)', logText.includes('şifre hatalı') && logText.includes('yönetici') && logText.includes('Mert Aydın'), logText.slice(0, 120));
+  await page.evaluate(() => logOut());
+  await login(page, '0542 249 32 27', '1234');
+  await page.evaluate(() => { skipOnboarding(); });
   // 10. stored doc size sanity
   const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(JSON.parse(localStorage.getItem('__fakeStore'))).map(([k,v])=>[k, JSON.stringify(v).length])));
   check('all docs under 1MB', Math.max(...Object.values(sizes)) < 1048576, 'largest doc '+Math.max(...Object.values(sizes))+' bytes, docs '+Object.keys(sizes).length);

@@ -20,8 +20,8 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fontlar ve kütüphaneler kendi sunucumuzdan yüklenir (Google Fonts / CDN'e istek atılmaz) -->
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
   :root{
     --ink:#15171B;
@@ -297,11 +297,11 @@
     #contractDocumentBody { position: absolute; top: 0; left: 0; width: 100%; }
   }
 </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-storage-compat.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/firebase-app-compat.js"></script>
+  <script src="vendor/firebase-auth-compat.js"></script>
+  <script src="vendor/firebase-firestore-compat.js"></script>
+  <script src="vendor/firebase-storage-compat.js"></script>
 </head>
 <body>
 
@@ -729,6 +729,11 @@
           <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Bildirmem gereken bir sağlık durumum var.</span>
         </label>
         <textarea id="healthDeclDetails" class="admin-textarea" style="display:none; width:100%; min-height:60px;" placeholder="Kısaca açıkla (örn: diz sakatlığı, tansiyon vb.)"></textarea>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
+          <input type="checkbox" id="healthConsentCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Sağlık beyanımın, kilo/ölçüm bilgilerimin ve postür/ilerleme fotoğraflarımın antrenman programımın hazırlanması ve takibi amacıyla kaydedilmesine <b>açık rıza veriyorum</b>. Bu onayı Ayarlar'dan istediğim zaman geri alabilirim. <span style="color:var(--muted);">(Sağlık durumu bildireceksen gerekli; aksi halde isteğe bağlı.)</span></span>
+        </label>
+        <div id="healthConsentWarning" style="display:none; font-size:11.5px; color:#e2664e; margin-top:8px;">Sağlık durumunu kaydedebilmemiz için yukarıdaki onay kutusunu işaretlemen gerekiyor.</div>
       </div>
 
       <div class="card" style="margin-bottom:14px;">
@@ -742,7 +747,11 @@
       <div class="card" style="margin-bottom:14px;">
         <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
           <input type="checkbox" id="contractAcceptCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Üyelik Sözleşmesi'ni ve KVKK Aydınlatma Metni'ni okudum, anladım ve kabul ediyorum.</span>
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Üyelik Sözleşmesi'ni okudum, anladım ve kabul ediyorum.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-top:12px;">
+          <input type="checkbox" id="kvkkReadCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">KVKK Aydınlatma Metni'ni okudum, kişisel verilerimin işlenmesi hakkında bilgilendirildim. <a href="privacy-policy.html" target="_blank" rel="noopener" style="color:var(--brass);">Gizlilik Politikası</a></span>
         </label>
       </div>
 
@@ -959,6 +968,19 @@
         </div>
         <button class="btn btn-brass btn-full" onclick="changePassword()">Şifreyi Değiştir</button>
         <div id="passwordChangeMsg" style="font-size:11.5px; margin-top:8px; text-align:center;"></div>
+      </div>
+
+      <div class="section-title">İzinlerim</div>
+      <div class="card">
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:12px;">
+          <input type="checkbox" id="settingsHealthConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Sağlık beyanımın ve ölçüm/postür bilgilerimin kaydedilmesine açık rızam var.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+          <input type="checkbox" id="settingsPhotoConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Fotoğraflarımın salonun sosyal medya ve tanıtımında kullanılmasına izin veriyorum.</span>
+        </label>
+        <div id="consentSaveMsg" style="font-size:11.5px; color:var(--muted); margin-top:10px;">İşareti kaldırdığında izin geri alınır. Sağlık iznini geri alırsan kayıtlı sağlık beyanın silinir.</div>
       </div>
 
       <div class="card">
@@ -1725,6 +1747,10 @@
           <div id="adminPasswordChangeMsg" style="font-size:11.5px; margin-top:8px; text-align:center;"></div>
         </div>
 
+        <div class="card" id="loginLogCard" style="margin-bottom:14px;">
+          <div class="card-label">GİRİŞ KAYITLARI <span style="color:var(--muted); font-weight:400;">(son 30)</span></div>
+          <div id="loginLogList" style="font-size:11.5px; max-height:220px; overflow-y:auto;"></div>
+        </div>
         <div class="card">
           <button class="btn btn-full" id="adminLogoutBtn" style="background:none; border:1px solid var(--red); color:#e2664e;" onclick="showAdminLogoutConfirm()">Çıkış Yap</button>
           <div id="adminLogoutConfirmBox" style="display:none; margin-top:12px; text-align:center;">
@@ -1782,6 +1808,7 @@
 
     <button class="btn btn-brass btn-full" onclick="loginMember()">Giriş Yap</button>
     <div id="loginError" style="font-size:11.5px; color:#e2664e; margin-top:10px;"></div>
+    <a href="privacy-policy.html" target="_blank" rel="noopener" style="display:block; font-size:11px; color:var(--muted); margin-top:14px; text-align:center;">Gizlilik Politikası ve KVKK Aydınlatma Metni</a>
     <div style="text-align:center; margin-top:14px;">
       <span style="font-size:12px; color:var(--muted); cursor:pointer; text-decoration:underline;" onclick="openForgotPassword()">Şifremi unuttum</span>
     </div>
@@ -1811,8 +1838,7 @@
     projectId: "tt-fitness-app",
     storageBucket: "tt-fitness-app.firebasestorage.app",
     messagingSenderId: "246112140718",
-    appId: "1:246112140718:web:dcac0d734605bb77ed5c3f",
-    measurementId: "G-VSX8BTC34M"
+    appId: "1:246112140718:web:dcac0d734605bb77ed5c3f"
   };
   console.log('%cTT FITNESS BUILD: 2026-11-11-v10', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
   firebase.initializeApp(firebaseConfig);
@@ -1942,7 +1968,7 @@
   // Tek bir bulut belgesiyle eşitlenen bir veri yapısı.
   //  kind 'object' → belgenin her alanı objenin bir anahtarı (genelde üye adı)
   //  kind 'array'  → belge { items: [...] } şeklinde
-  function createDocSync(docRef, ref, kind, label){
+  function createDocSync(docRef, ref, kind, label, customApply){
     const synced = new Map(); // anahtar -> bulutta olduğunu bildiğimiz son değer (kanonik metin)
     let docExists = false;
     function localLeaves(){
@@ -1952,6 +1978,7 @@
       return out;
     }
     function applyRemote(key, raw){
+      if(customApply){ customApply(key, raw); return; }
       if(kind === 'array'){
         const arr = desanitizeFromFirestore(raw) || [];
         ref.length = 0; ref.push(...arr);
@@ -1963,7 +1990,7 @@
     function ingest(data, isInitial){
       docExists = true;
       data = data || {};
-      if(isInitial && kind === 'object'){ Object.keys(ref).forEach(k => delete ref[k]); }
+      if(isInitial && kind === 'object' && !customApply){ Object.keys(ref).forEach(k => delete ref[k]); }
       const local = localLeaves();
       let changed = false;
       const remoteKeys = kind === 'array' ? ('items' in data ? ['items'] : []) : Object.keys(data);
@@ -2117,6 +2144,7 @@
   }
 
   const appDataSyncs = {}; // belge adı -> createDocSync sonucu
+  let legacyStorageMode = false; // true: veritabanı kuralları yeni belgelere izin vermiyor, eski tek belge kullanılıyor
   let membersSync = null, trainersSync = null;
   const memberNumericDefaults = { water:0, coffee:0, waterCredits:0, coffeeCredits:0 };
   function applyMemberDefaults(m){
@@ -2126,6 +2154,15 @@
     Object.keys(memberNumericDefaults).forEach(k => {
       if(typeof out[k] !== 'number' || Number.isNaN(out[k])) out[k] = memberNumericDefaults[k];
     });
+    return out;
+  }
+
+  let knownStateFields = null;
+  // Eski tek belgede bu sürümün tanımadığı alanlar olabilir (örn. eski ortak bildirim listesi) — onlara dokunma
+  function filterKnownFields(docId, data){
+    if(docId !== 'appState' || !knownStateFields) return data;
+    const out = {};
+    Object.keys(data || {}).forEach(f => { if(knownStateFields.has(f)) out[f] = data[f]; });
     return out;
   }
 
@@ -2193,11 +2230,14 @@
         [memberProfiles, 'memberProfiles', 'object'],
         [memberMeals, 'memberMeals', 'object'],
         [memberTrainerNotes, 'memberTrainerNotes', 'object'],
+        [consentRecords, 'consentRecords', 'object'],
+        [loginLog, 'loginLog', 'object'],
         [appMeta, 'appMeta', 'object'],
         [mealResetMonth, 'mealResetMonth', 'object'],
       ];
       // Önce koleksiyonu topluca okumayı dene; veritabanı kuralları toplu okumaya izin vermiyorsa
       // belgeleri tek tek oku (eski sürümün yaptığı gibi).
+      knownStateFields = new Set(stateRefs.map(r => r[1]));
       const appDataDocs = {};
       let appDataListAllowed = true;
       try{
@@ -2207,17 +2247,55 @@
         appDataListAllowed = false;
         console.warn('app_data topluca okunamadı, belgeler tek tek okunuyor:', listErr);
         const ids = ['appState', 'memberPackages', ...stateRefs.map(r => 'state_' + r[1])];
-        const snaps = await Promise.all(ids.map(id => db.collection('app_data').doc(id).get()));
-        snaps.forEach((snap, i) => { if(snap.exists) appDataDocs[ids[i]] = snap.data() || {}; });
+        // Tek tek okurken izin verilmeyen/var olmayan belge tüm yüklemeyi durdurmasın
+        const snaps = await Promise.all(ids.map(id => db.collection('app_data').doc(id).get().catch(() => null)));
+        snaps.forEach((snap, i) => { if(snap && snap.exists) appDataDocs[ids[i]] = snap.data() || {}; });
       }
       const legacyState = desanitizeFromFirestore(appDataDocs['appState'] || {});
-      stateRefs.forEach(([ref, field, kind]) => {
-        const docId = 'state_' + field;
-        const sync = createDocSync(db.collection('app_data').doc(docId), ref, kind, field);
-        appDataSyncs[docId] = sync;
-        if(docId in appDataDocs) sync.ingest(appDataDocs[docId], true);
-        else if(field in legacyState) sync.importLegacy(legacyState[field]);
-      });
+
+      // Yeni düzene (alan başına ayrı belge) geçmeden önce veritabanı kurallarının buna izin verip
+      // vermediğini dene. İzin yoksa uygulama ESKİ tek belgeyle (app_data/appState) çalışmaya devam
+      // eder — yine sadece değişen alanı yazar ve canlı eşitlenir, hiçbir şey bozulmaz.
+      const hasNewDocs = Object.keys(appDataDocs).some(id => id.startsWith('state_'));
+      if(!hasNewDocs){
+        try{
+          await Promise.race([
+            db.collection('app_data').doc('state_appMeta').set({ schema: 2 }, { merge: true }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('zaman aşımı')), 7000)),
+          ]);
+          appDataDocs['state_appMeta'] = { schema: 2 };
+        }catch(probeErr){
+          legacyStorageMode = true;
+          console.warn('Yeni kayıt düzenine izin yok, eski tek-belge düzeniyle devam ediliyor:', probeErr);
+        }
+      }
+      if(legacyStorageMode){
+        const legacyRoot = {};
+        stateRefs.forEach(([ref, field]) => { legacyRoot[field] = ref; });
+        const kinds = {};
+        stateRefs.forEach(([ref, field, kind]) => { kinds[field] = kind; });
+        const sync = createDocSync(db.collection('app_data').doc('appState'), legacyRoot, 'object', 'appState', (field, raw) => {
+          const target = legacyRoot[field];
+          if(!target || raw === undefined) return;
+          const value = desanitizeFromFirestore(raw);
+          if(kinds[field] === 'array'){ target.length = 0; target.push(...(value || [])); }
+          else { Object.keys(target).forEach(k => delete target[k]); Object.assign(target, value || {}); }
+        });
+        appDataSyncs['appState'] = sync;
+        if('appState' in appDataDocs){
+          const known = {};
+          Object.keys(appDataDocs['appState']).forEach(f => { if(f in legacyRoot) known[f] = appDataDocs['appState'][f]; });
+          sync.ingest(known, true);
+        }
+      } else {
+        stateRefs.forEach(([ref, field, kind]) => {
+          const docId = 'state_' + field;
+          const sync = createDocSync(db.collection('app_data').doc(docId), ref, kind, field);
+          appDataSyncs[docId] = sync;
+          if(docId in appDataDocs) sync.ingest(appDataDocs[docId], true);
+          else if(field in legacyState) sync.importLegacy(legacyState[field]);
+        });
+      }
       const pkgSync = createDocSync(db.collection('app_data').doc('memberPackages'), memberPackages, 'object', 'memberPackages');
       appDataSyncs['memberPackages'] = pkgSync;
       if('memberPackages' in appDataDocs) pkgSync.ingest(appDataDocs['memberPackages'], true);
@@ -2231,14 +2309,14 @@
           let changed = false;
           snap.docChanges().forEach(ch => {
             const sync = appDataSyncs[ch.doc.id];
-            if(sync && ch.type !== 'removed' && sync.ingest(ch.doc.data(), false)) changed = true;
+            if(sync && ch.type !== 'removed' && sync.ingest(filterKnownFields(ch.doc.id, ch.doc.data()), false)) changed = true;
           });
           if(changed){ applyAppMeta(); scheduleRemoteRefresh(); }
         }, err => console.error('Canlı eşitleme (veri) hatası:', err));
       } else {
         Object.keys(appDataSyncs).forEach(docId => {
           db.collection('app_data').doc(docId).onSnapshot(snap => {
-            if(snap.exists && appDataSyncs[docId].ingest(snap.data(), false)){ applyAppMeta(); scheduleRemoteRefresh(); }
+            if(snap.exists && appDataSyncs[docId].ingest(filterKnownFields(docId, snap.data()), false)){ applyAppMeta(); scheduleRemoteRefresh(); }
           }, err => console.error('Canlı eşitleme (' + docId + ') hatası:', err));
         });
       }
@@ -3612,15 +3690,18 @@
   async function claimAttendance(logKey, entry, member){
     if(attendanceClaimsInFlight.has(logKey)) return;
     attendanceClaimsInFlight.add(logKey);
-    const logRef = db.collection('app_data').doc('state_attendanceLog');
+    const logRef = db.collection('app_data').doc(legacyStorageMode ? 'appState' : 'state_attendanceLog');
     const pkgRef = db.collection('app_data').doc('memberPackages');
     try{
       await flushAllAutosaves();
       await db.runTransaction(async (tx) => {
         const logSnap = await tx.get(logRef);
-        if(logSnap.exists && (logSnap.data() || {})[logKey]) return;
+        const logData = logSnap.exists ? (logSnap.data() || {}) : {};
+        const existingLog = legacyStorageMode ? (logData.attendanceLog || {}) : logData;
+        if(existingLog[logKey]) return;
         const pkgSnap = await tx.get(pkgRef);
-        tx.set(logRef, { [logKey]: sanitizeForFirestore(entry) }, { merge: true });
+        const logEntry = { [logKey]: sanitizeForFirestore(entry) };
+        tx.set(logRef, legacyStorageMode ? { attendanceLog: logEntry } : logEntry, { merge: true });
         if(pkgSnap.exists && (pkgSnap.data() || {})[member]){
           tx.update(pkgRef, new firebase.firestore.FieldPath(member, 'used'), firebase.firestore.FieldValue.increment(1));
         }
@@ -4543,6 +4624,7 @@
   let healthDeclarations = {}; // { memberName: { hasCondition: bool, details: string } }
   let parentalConsents = {}; // { memberName: { parentName, parentPhone } } — 18 yaş altı üyeler için
   let photoConsent = {}; // { memberName: bool }
+  let consentRecords = {}; // { memberName: { contract, kvkkRead, health, photo, date, version } } — her onay ayrı kaydedilir
 
   function showContractGate(){
     lastActiveTab = 'home'; // kabul edince buraya döner
@@ -4557,6 +4639,8 @@
         : 'Üyelik sözleşmesini ve KVKK aydınlatma metnini okuyup onaylaman gerekiyor.';
     }
     document.getElementById('contractAcceptCheckbox').checked = false;
+    document.getElementById('kvkkReadCheckbox').checked = false;
+    document.getElementById('healthConsentCheckbox').checked = !!(consentRecords[currentMemberName] && consentRecords[currentMemberName].health);
     const existingHealth = healthDeclarations[currentMemberName];
     document.getElementById('healthDeclNone').checked = !(existingHealth && existingHealth.hasCondition);
     document.getElementById('healthDeclHas').checked = !!(existingHealth && existingHealth.hasCondition);
@@ -4592,6 +4676,7 @@
     if(titleEl) titleEl.textContent = 'Devam Etmeden Önce';
   }
   function toggleHealthDeclDetails(){
+    setTimeout(toggleContractAcceptButton, 0);
     const hasCondition = document.getElementById('healthDeclHas').checked;
     document.getElementById('healthDeclDetails').style.display = hasCondition ? 'block' : 'none';
   }
@@ -4637,12 +4722,28 @@
     document.getElementById('gateParentConsentCard').style.display = isMinor ? 'block' : 'none';
     toggleContractAcceptButton();
   }
+  // Ayarlar > İzinlerim: üye verdiği izinleri buradan geri alabilir / yeniden verebilir
+  function updateMyConsents(){
+    const health = document.getElementById('settingsHealthConsent').checked;
+    const photo = document.getElementById('settingsPhotoConsent').checked;
+    const rec = consentRecords[currentMemberName] || { contract: !!contractAccepted[currentMemberName], kvkkRead: !!contractAccepted[currentMemberName] };
+    const hadHealth = !!rec.health;
+    consentRecords[currentMemberName] = { ...rec, health, photo, updated: toLocalDateStr(getNow()) };
+    photoConsent[currentMemberName] = photo;
+    if(hadHealth && !health) delete healthDeclarations[currentMemberName];
+    const msg = document.getElementById('consentSaveMsg');
+    if(msg){ msg.textContent = 'İzin tercihlerin kaydedildi ✓'; msg.style.color = 'var(--green)'; }
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  }
   function toggleContractAcceptButton(){
-    const checked = document.getElementById('contractAcceptCheckbox').checked;
+    const checked = document.getElementById('contractAcceptCheckbox').checked && document.getElementById('kvkkReadCheckbox').checked;
     const birthdateVal = document.getElementById('gateBirthdateInput').value;
     const age = calculateAgeFromDate(birthdateVal);
     const isMinor = age !== null && age < 18;
-    let ready = checked && !!birthdateVal;
+    // Sağlık durumu bildiriliyorsa ayrı açık rıza kutusu da işaretli olmalı
+    const healthBlocked = document.getElementById('healthDeclHas').checked && !document.getElementById('healthConsentCheckbox').checked;
+    document.getElementById('healthConsentWarning').style.display = healthBlocked ? 'block' : 'none';
+    let ready = checked && !!birthdateVal && !healthBlocked;
     if(isMinor){
       const parentOk = document.getElementById('gateParentConsentCheckbox').checked
         && document.getElementById('gateParentName').value.trim()
@@ -4677,11 +4778,19 @@
       };
     }
     const hasCondition = document.getElementById('healthDeclHas').checked;
+    const healthConsent = document.getElementById('healthConsentCheckbox').checked;
+    if(!document.getElementById('kvkkReadCheckbox').checked) return;
+    if(hasCondition && !healthConsent) return;
     healthDeclarations[currentMemberName] = {
       hasCondition,
       details: hasCondition ? document.getElementById('healthDeclDetails').value.trim() : '',
     };
     photoConsent[currentMemberName] = document.getElementById('photoConsentCheckbox').checked;
+    // Her onay ayrı ayrı, tarihiyle birlikte kaydedilir
+    consentRecords[currentMemberName] = {
+      contract: true, kvkkRead: true, health: healthConsent, photo: photoConsent[currentMemberName],
+      date: toLocalDateStr(getNow()), version: CONTRACT_VERSION,
+    };
     const hamburger = document.getElementById('hamburgerBtn');
     if(hamburger) hamburger.style.visibility = 'visible';
     const searchBtn = document.getElementById('memberSearchBtn');
@@ -4862,6 +4971,9 @@
     const birthdayEl = document.getElementById('settingsBirthday');
     const settingsProfile = getMemberProfile(currentMemberName);
     const meObj = members.find(x => x.name === currentMemberName);
+    const myConsent = consentRecords[currentMemberName] || {};
+    document.getElementById('settingsHealthConsent').checked = !!myConsent.health;
+    document.getElementById('settingsPhotoConsent').checked = !!photoConsent[currentMemberName];
     if(nameEl) nameEl.value = settingsProfile.name || '';
     if(ageEl) ageEl.value = settingsProfile.age || '';
     if(genderEl) genderEl.value = settingsProfile.gender || '';
@@ -4918,6 +5030,48 @@
   function normalizePhone(s){
     return (s || '').replace(/\s+/g, '');
   }
+  // ---- Giriş kaydı ve hatalı deneme sınırı ----
+  // Her giriş denemesi (başarılı/başarısız) buluta kaydedilir; yönetici Ayarlar'dan görebilir.
+  // Aynı cihazdan art arda 5 hatalı denemeden sonra 5 dakika beklemek gerekir.
+  let loginLog = {}; // { "zaman_rastgele": { ts, date, time, who, ok, reason } }
+  const LOGIN_MAX_FAILS = 5, LOGIN_LOCK_MS = 5 * 60 * 1000;
+  function recordLoginAttempt(who, ok, reason){
+    const now = new Date();
+    loginLog[now.getTime() + '_' + Math.random().toString(36).slice(2, 7)] = {
+      ts: now.getTime(), date: toLocalDateStr(now), time: pad2(now.getHours()) + ':' + pad2(now.getMinutes()), who, ok, reason: reason || '',
+    };
+    // Kayıt şişmesin: en yeni 300 kaydı tut
+    const keys = Object.keys(loginLog).sort((a, b) => (loginLog[b].ts || 0) - (loginLog[a].ts || 0));
+    keys.slice(300).forEach(k => delete loginLog[k]);
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  }
+  function maskLoginId(id){
+    const t = String(id || '').replace(/\s/g, '');
+    return t.length <= 4 ? t : '•••' + t.slice(-4);
+  }
+  function getLoginLock(){
+    try{ return JSON.parse(localStorage.getItem('ttf_login_fail') || '{}'); }catch(e){ return {}; }
+  }
+  function noteLoginFailure(){
+    const st = getLoginLock();
+    st.count = (st.count || 0) + 1;
+    if(st.count >= LOGIN_MAX_FAILS){ st.until = Date.now() + LOGIN_LOCK_MS; st.count = 0; }
+    try{ localStorage.setItem('ttf_login_fail', JSON.stringify(st)); }catch(e){}
+    return st;
+  }
+  function renderLoginLog(){
+    const card = document.getElementById('loginLogCard');
+    const el = document.getElementById('loginLogList');
+    if(!card || !el) return;
+    card.style.display = adminTrainerScope ? 'none' : 'block'; // sadece tam yetkili yönetici görür
+    const rows = Object.values(loginLog).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30);
+    el.innerHTML = rows.length ? rows.map(r => `
+      <div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line);">
+        <span>${r.ok ? '✅' : '❌'} ${escapeHtml(r.who)}${r.reason ? ` <span style="color:var(--muted);">· ${escapeHtml(r.reason)}</span>` : ''}</span>
+        <span style="color:var(--muted); white-space:nowrap;">${formatDateTr(r.date)} ${r.time}</span>
+      </div>`).join('') : '<div class="meal-empty">Henüz kayıt yok.</div>';
+  }
+
   function loginMember(){
     const phone = document.getElementById('loginPhoneInput').value.trim();
     const password = document.getElementById('loginPasswordInput').value;
@@ -4926,9 +5080,17 @@
       errorEl.textContent = 'Lütfen telefon numarası ve şifreni gir.';
       return;
     }
+    const lock = getLoginLock();
+    if(lock.until && lock.until > Date.now()){
+      const mins = Math.ceil((lock.until - Date.now()) / 60000);
+      errorEl.textContent = `Çok fazla hatalı deneme yapıldı. Lütfen ${mins} dakika sonra tekrar dene.`;
+      return;
+    }
     const found = members.find(m => normalizePhone(m.phone) === normalizePhone(phone));
     if(!found){
       errorEl.textContent = 'Bu telefon numarasıyla kayıtlı bir üyelik bulunamadı.';
+      recordLoginAttempt(maskLoginId(phone), false, 'kayıtlı değil');
+      noteLoginFailure();
       return;
     }
     if(found.status === 'pending'){
@@ -4940,12 +5102,18 @@
         if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
       } else {
         errorEl.textContent = 'Hesabın henüz aktif değil. Salon yönetiminden aldığın kodu şifre olarak girerek aktive edebilirsin.';
+        recordLoginAttempt(found.name, false, 'aktivasyon kodu hatalı');
+        noteLoginFailure();
         return;
       }
     } else if(found.password !== password){
       errorEl.textContent = 'Şifre hatalı. Tekrar dene.';
+      recordLoginAttempt(found.name, false, 'şifre hatalı');
+      if(noteLoginFailure().until) errorEl.textContent = 'Çok fazla hatalı deneme yapıldı. Lütfen 5 dakika sonra tekrar dene.';
       return;
     }
+    try{ localStorage.removeItem('ttf_login_fail'); }catch(e){}
+    recordLoginAttempt(found.name, true, found.role === 'admin' ? 'yönetici' : '');
     completeLogin(found);
     runTimeChecks();
   }
@@ -5604,6 +5772,7 @@
     if(versionCard) versionCard.style.display = adminTrainerScope ? 'none' : 'block';
     renderSystemClock();
     initSystemClockInput();
+    renderLoginLog();
     setAdminTopBar('settings', closeAdminSettings);
   }
   function closeAdminSettings(){
@@ -8591,7 +8760,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       [renderPriceForm, renderConsumption, renderAdminAvailability, renderAdminMeals, renderProgramForm, renderAssignedPrograms,
        renderEditMemberForm, renderAttendanceLog, renderMemberProfiles, renderMealReminderForm, renderAnalytics, renderAnnounceForm,
        renderAnnounceHistory, renderProgressAdminMemberSelect, renderFinance, renderAdminHome, renderPendingCreditRequests,
-       renderPasswordResetRequests, renderAdminMessagesList, renderAdminMessageThread, updateAdminUnreadBadge].forEach(safe);
+       renderPasswordResetRequests, renderLoginLog, renderAdminMessagesList, renderAdminMessageThread, updateAdminUnreadBadge].forEach(safe);
     } else {
       const pkg = memberPackages[currentMemberName];
       sessionsTotal = pkg ? (pkg.unlimited ? 999 : pkg.size) : 0;
@@ -8648,13 +8817,20 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
 
 <!-- ---- Postür Analizi (deneysel, MediaPipe Pose ile) ---- -->
 <script type="module">
-  import { PoseLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+  // Yapay zeka modeli artık sayfa açılır açılmaz DEĞİL, yalnızca yönetici postür analizini ilk kez
+  // kullandığında indirilir — üyelerin cihazından bu sunuculara hiç istek gitmez, açılış da hızlanır.
 
   let poseLandmarker = null;
   let poseLoadError = false;
 
-  async function initPoseLandmarker(){
+  let poseInitPromise = null;
+  function initPoseLandmarker(){
+    if(!poseInitPromise || poseLoadError){ poseLoadError = false; poseInitPromise = loadPoseLandmarker(); }
+    return poseInitPromise;
+  }
+  async function loadPoseLandmarker(){
     try {
+      const { PoseLandmarker, FilesetResolver } = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
       );
@@ -8670,8 +8846,6 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       console.error('Postür modeli yüklenemedi:', e);
     }
   }
-  initPoseLandmarker();
-
   const POSE_CONNECTIONS = [
     [11,12],[11,23],[12,24],[23,24],
     [11,13],[13,15],[12,14],[14,16],
@@ -8687,17 +8861,14 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
 
     resultEl.innerHTML = '<span style="color:var(--muted);">Analiz ediliyor...</span>';
 
-    if(poseLoadError){
-      resultEl.innerHTML = '<span style="color:#e2664e;">Yapay zeka modeli yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.</span>';
-      return;
-    }
-
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = async () => {
-        if(!poseLandmarker){
-          resultEl.innerHTML = '<span style="color:var(--muted);">Model henüz hazırlanıyor, birkaç saniye sonra tekrar dene.</span>';
+        resultEl.innerHTML = '<span style="color:var(--muted);">Yapay zeka modeli hazırlanıyor, analiz ediliyor...</span>';
+        await initPoseLandmarker();
+        if(poseLoadError || !poseLandmarker){
+          resultEl.innerHTML = '<span style="color:#e2664e;">Yapay zeka modeli yüklenemedi. İnternet bağlantını kontrol edip tekrar dene.</span>';
           return;
         }
         canvas.width = img.width;
