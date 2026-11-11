@@ -9,6 +9,11 @@
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   const isFV = v => v && typeof v === 'object' && v.__fv;
   let idc = 0;
+  // "Kısıtlı kurallar" modu: localStorage.__fakeRules === 'legacy' ise app_data altında yalnızca
+  // eski belgelere (appState, memberPackages) izin verilir, toplu okuma da reddedilir.
+  const restricted = () => localStorage.getItem('__fakeRules') === 'legacy';
+  const denied = path => restricted() && path.startsWith('app_data/') && !['app_data/appState', 'app_data/memberPackages'].includes(path);
+  const guard = path => { if(denied(path)) throw new Error('permission-denied: ' + path); };
 
   class FieldPath { constructor(...segs){ if(segs.some(s => typeof s !== 'string' || !s)) throw new Error('Invalid FieldPath segment'); this.segs = segs; } }
   const FieldValue = { delete: () => ({ __fv: 'delete' }), increment: n => ({ __fv: 'inc', n }) };
@@ -55,6 +60,7 @@
     store[path] = doc;
   }
   function commit(mutate, paths){
+    paths.forEach(guard);
     const store = load();
     mutate(store);
     paths.forEach(p => { const size = JSON.stringify(store[p] || {}).length; if(size > 1048576) throw new Error('Document exceeds 1MB: ' + p + ' (' + size + ')'); });
@@ -93,7 +99,7 @@
 
   function docRef(path){
     return { id: path.split('/').pop(), path,
-      get: async () => makeDocSnap(path, load()[path]),
+      get: async () => { guard(path); return makeDocSnap(path, load()[path]); },
       set: async (data, opts) => commit(s => applySet(s, path, data, opts), [path]),
       update: async (...args) => commit(s => applyUpdate(s, path, args), [path]),
       onSnapshot: (cb) => addListener({ kind: 'doc', path, cb, seen: undefined, fired: false }),
@@ -101,7 +107,7 @@
   }
   function coll(name){ return {
     doc: id => docRef(name + '/' + (id || ('auto' + (++idc) + '_' + Math.random().toString(36).slice(2, 8)))),
-    get: async () => { const store = load(); const docs = collDocs(store, name).map(p => makeDocSnap(p, store[p])); return { empty: !docs.length, size: docs.length, docs, forEach: f => docs.forEach(f) }; },
+    get: async () => { if(restricted() && name === 'app_data') throw new Error('permission-denied: list app_data'); const store = load(); const docs = collDocs(store, name).map(p => makeDocSnap(p, store[p])); return { empty: !docs.length, size: docs.length, docs, forEach: f => docs.forEach(f) }; },
     onSnapshot: (cb) => addListener({ kind: 'collection', name, cb, seen: {}, fired: false }),
   };}
   const db = { collection: coll, doc: docRef,
@@ -116,7 +122,7 @@
     async runTransaction(fn){
       const ops = [], paths = [];
       const tx = {
-        get: async r => makeDocSnap(r.path, load()[r.path]),
+        get: async r => { guard(r.path); return makeDocSnap(r.path, load()[r.path]); },
         set: (r, d, o) => { ops.push(s => applySet(s, r.path, d, o)); paths.push(r.path); },
         update: (r, ...a) => { ops.push(s => applyUpdate(s, r.path, a)); paths.push(r.path); },
       };

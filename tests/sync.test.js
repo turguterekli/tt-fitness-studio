@@ -6,6 +6,11 @@ const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fak
 const wait = (page, ms) => page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms).catch(()=>{});
 
 const AYSE = 'Ayşe Yılmaz';
+// "legacy" modu: veritabanı kuralları yeni belgelere izin vermiyormuş gibi davranır;
+// uygulama eski tek belgeyle (app_data/appState) çalışmaya devam etmelidir.
+const LEGACY = process.argv[2] === 'legacy';
+// Bir veri alanını, hangi düzende saklanıyorsa oradan okur
+const field = (s, name) => { if(LEGACY) return (s['app_data/appState'] || {})[name]; const d = s['app_data/state_' + name]; return d && Array.isArray(d.items) && Object.keys(d).length === 1 ? d.items : d; };
 const seed = {
   'members/adm': { name:'Turgut Terekli', phone:'admin1', password:'tt2026', role:'admin', adminScope:'full', trainerScope:null, status:'active' },
   'members/m1': { name:AYSE, phone:'0500 111 22 33', password:'abcd', role:'member', status:'active', joinDate:'2026-09-01' },
@@ -24,7 +29,7 @@ const seed = {
 const legacyJson = JSON.stringify(seed['app_data/appState']);
 
 (async () => {
-  const { browser, ctx } = await newContext({ seed });
+  const { browser, ctx } = await newContext({ seed, rules: LEGACY ? 'legacy' : null });
   const T0 = '2026-11-11T12:00:00'; // Çarşamba
   const A = await openPage(ctx, { time: T0 }); // yönetici cihazı
   const B = await openPage(ctx, { time: T0 }); // üye cihazı
@@ -38,8 +43,13 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   // ---- Eski veriden aktarım ----
   let s = await store(A.page);
   check('legacy data loaded (message)', await B.page.evaluate(n => (memberMessages[n]||[]).length === 1, AYSE));
-  check('migrated to per-field docs', !!s['app_data/state_memberMessages'] && !!s['app_data/state_memberPrograms'] && Array.isArray(s['app_data/state_announcements'].items));
-  check('legacy appState left untouched as backup', JSON.stringify(s['app_data/appState']) === legacyJson);
+  if(LEGACY){
+    check('restricted rules: no new docs created, old doc still used', !Object.keys(s).some(k => k.startsWith('app_data/state_')) && !!s['app_data/appState']);
+    check('restricted rules: unknown old fields preserved', Array.isArray(s['app_data/appState'].notificationCenterItems));
+  } else {
+    check('migrated to per-field docs', !!field(s, 'memberMessages') && !!field(s, 'memberPrograms') && Array.isArray(field(s, 'announcements')));
+    check('legacy appState left untouched as backup', JSON.stringify(s['app_data/appState']) === legacyJson);
+  }
   check('no contract gate for already-accepted member', !(await B.page.isVisible('#view-contractgate')));
   check('old shared notification not shown', !(await B.page.textContent('#notificationCenterList')).includes('ortak bildirim'));
 
@@ -51,11 +61,11 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
 
   // ---- Otomatik yoklama: Pazartesi 10:00 dersi geçmiş, iki cihaz açık → sadece 1 kez düşmeli ----
   s = await store(A.page);
-  const logKeys = Object.keys(s['app_data/state_attendanceLog'] || {});
+  const logKeys = Object.keys(field(s, 'attendanceLog') || {});
   check('attendance logged once for Mon class', logKeys.length === 1 && logKeys[0] === `${AYSE}|0|10:00|2026-11-09`, logKeys.join(';'));
   check('session deducted exactly once (2 -> 3)', s['app_data/memberPackages'][AYSE].used === 3, 'used=' + s['app_data/memberPackages'][AYSE].used);
   check('member device shows updated usage', await B.page.evaluate(() => sessionsUsed) === 3);
-  check('attendanceCheckedUntil stored', s['app_data/state_appMeta'].attendanceCheckedUntil === '2026-11-11');
+  check('attendanceCheckedUntil stored', field(s, 'appMeta').attendanceCheckedUntil === '2026-11-11');
 
   // ---- İki cihaz aynı anda: birbirinin kaydını ezmemeli ----
   await B.page.evaluate(() => { getMemberMeals(currentMemberName)['Öğle'].push({ name:'Tavuk', cal:300, portion:1, photo:null, date: toLocalDateStr(getNow()) }); });
@@ -65,10 +75,10 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   await B.page.evaluate(() => { goalNotes[currentMemberName] = '5 kilo'; });
   await wait(A.page, 2500);
   s = await store(A.page);
-  check('member meal survived admin writes', (s['app_data/state_memberMeals'][AYSE]['Öğle']||[]).length === 1);
-  check('admin note saved', s['app_data/state_memberNotes']['Ali Veli'] === 'dizine dikkat');
-  check('admin message + old message both kept', s['app_data/state_memberMessages'][AYSE].length === 2);
-  check('member goal saved', s['app_data/state_goalNotes'][AYSE] === '5 kilo');
+  check('member meal survived admin writes', (field(s, 'memberMeals')[AYSE]['Öğle']||[]).length === 1);
+  check('admin note saved', field(s, 'memberNotes')['Ali Veli'] === 'dizine dikkat');
+  check('admin message + old message both kept', field(s, 'memberMessages')[AYSE].length === 2);
+  check('member goal saved', field(s, 'goalNotes')[AYSE] === '5 kilo');
   check('admin device received member meal live', await A.page.evaluate(n => getMemberMeals(n)['Öğle'].length === 1, AYSE));
   check('member device received admin message live', await B.page.evaluate(n => memberMessages[n].length === 2, AYSE));
   await B.page.evaluate(() => openMemberSubScreen('messages'));
@@ -103,7 +113,7 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   check('contract gate shown after admin bumped version', await B.page.isVisible('#view-contractgate'));
   check('dismissed announcement stays dismissed after reload', !(await B.page.textContent('#notificationCenterList')).includes('Hoş geldiniz'));
   check('onboarding not repeated after reload', !(await B.page.isVisible('#onboardingOverlay')));
-  check('contract version persisted', (await store(A.page))['app_data/state_appMeta'].contractVersion === 2);
+  check('contract version persisted', field(await store(A.page), 'appMeta').contractVersion === 2);
   check('no JS errors (two devices)', errors().length === 0, errors().join(' | '));
   await A.page.close(); await B.page.close();
 
@@ -111,15 +121,15 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   const C = await openPage(ctx, { time: '2026-12-02T12:00:00' }); // 3 hafta sonra, Çarşamba
   await wait(C.page, 2500);
   s = await store(C.page);
-  const keys2 = Object.keys(s['app_data/state_attendanceLog']).sort();
+  const keys2 = Object.keys(field(s, 'attendanceLog')).sort();
   check('missed weeks caught up (Nov 16, 23, 30)', ['2026-11-16','2026-11-23','2026-11-30'].every(d => keys2.includes(`${AYSE}|0|10:00|${d}`)) && keys2.length === 4, keys2.join(';'));
   check('sessions deducted for each missed week (3 -> 6)', s['app_data/memberPackages'][AYSE].used === 6, 'used=' + s['app_data/memberPackages'][AYSE].used);
   if(!(await C.page.isVisible('#member-app'))) await login(C.page, '0500 111 22 33', 'yeni1');
   await C.page.evaluate(() => { if(document.getElementById('view-contractgate').classList.contains('active')){ contractAcceptedVersion[currentMemberName] = CONTRACT_VERSION; } });
   await wait(C.page, 2500);
   s = await store(C.page);
-  check('new month: last month meals cleared', (s['app_data/state_memberMeals'][AYSE]['Öğle']||[]).length === 0);
-  check('meal reset month stored', s['app_data/state_mealResetMonth'][AYSE] === '2026-12');
+  check('new month: last month meals cleared', (field(s, 'memberMeals')[AYSE]['Öğle']||[]).length === 0);
+  check('meal reset month stored', field(s, 'mealResetMonth')[AYSE] === '2026-12');
   const chips2 = await C.page.$$eval('#dayRow .day-chip .n', els => els.map(e => e.textContent));
   check('day chips advanced to December week', chips2.join(',') === '30,1,2,3,4,5,6', chips2.join(','));
   // aynı gün tekrar açılırsa tekrar düşmemeli

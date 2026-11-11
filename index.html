@@ -1942,7 +1942,7 @@
   // Tek bir bulut belgesiyle eşitlenen bir veri yapısı.
   //  kind 'object' → belgenin her alanı objenin bir anahtarı (genelde üye adı)
   //  kind 'array'  → belge { items: [...] } şeklinde
-  function createDocSync(docRef, ref, kind, label){
+  function createDocSync(docRef, ref, kind, label, customApply){
     const synced = new Map(); // anahtar -> bulutta olduğunu bildiğimiz son değer (kanonik metin)
     let docExists = false;
     function localLeaves(){
@@ -1952,6 +1952,7 @@
       return out;
     }
     function applyRemote(key, raw){
+      if(customApply){ customApply(key, raw); return; }
       if(kind === 'array'){
         const arr = desanitizeFromFirestore(raw) || [];
         ref.length = 0; ref.push(...arr);
@@ -1963,7 +1964,7 @@
     function ingest(data, isInitial){
       docExists = true;
       data = data || {};
-      if(isInitial && kind === 'object'){ Object.keys(ref).forEach(k => delete ref[k]); }
+      if(isInitial && kind === 'object' && !customApply){ Object.keys(ref).forEach(k => delete ref[k]); }
       const local = localLeaves();
       let changed = false;
       const remoteKeys = kind === 'array' ? ('items' in data ? ['items'] : []) : Object.keys(data);
@@ -2117,6 +2118,7 @@
   }
 
   const appDataSyncs = {}; // belge adı -> createDocSync sonucu
+  let legacyStorageMode = false; // true: veritabanı kuralları yeni belgelere izin vermiyor, eski tek belge kullanılıyor
   let membersSync = null, trainersSync = null;
   const memberNumericDefaults = { water:0, coffee:0, waterCredits:0, coffeeCredits:0 };
   function applyMemberDefaults(m){
@@ -2126,6 +2128,15 @@
     Object.keys(memberNumericDefaults).forEach(k => {
       if(typeof out[k] !== 'number' || Number.isNaN(out[k])) out[k] = memberNumericDefaults[k];
     });
+    return out;
+  }
+
+  let knownStateFields = null;
+  // Eski tek belgede bu sürümün tanımadığı alanlar olabilir (örn. eski ortak bildirim listesi) — onlara dokunma
+  function filterKnownFields(docId, data){
+    if(docId !== 'appState' || !knownStateFields) return data;
+    const out = {};
+    Object.keys(data || {}).forEach(f => { if(knownStateFields.has(f)) out[f] = data[f]; });
     return out;
   }
 
@@ -2198,6 +2209,7 @@
       ];
       // Önce koleksiyonu topluca okumayı dene; veritabanı kuralları toplu okumaya izin vermiyorsa
       // belgeleri tek tek oku (eski sürümün yaptığı gibi).
+      knownStateFields = new Set(stateRefs.map(r => r[1]));
       const appDataDocs = {};
       let appDataListAllowed = true;
       try{
@@ -2207,17 +2219,55 @@
         appDataListAllowed = false;
         console.warn('app_data topluca okunamadı, belgeler tek tek okunuyor:', listErr);
         const ids = ['appState', 'memberPackages', ...stateRefs.map(r => 'state_' + r[1])];
-        const snaps = await Promise.all(ids.map(id => db.collection('app_data').doc(id).get()));
-        snaps.forEach((snap, i) => { if(snap.exists) appDataDocs[ids[i]] = snap.data() || {}; });
+        // Tek tek okurken izin verilmeyen/var olmayan belge tüm yüklemeyi durdurmasın
+        const snaps = await Promise.all(ids.map(id => db.collection('app_data').doc(id).get().catch(() => null)));
+        snaps.forEach((snap, i) => { if(snap && snap.exists) appDataDocs[ids[i]] = snap.data() || {}; });
       }
       const legacyState = desanitizeFromFirestore(appDataDocs['appState'] || {});
-      stateRefs.forEach(([ref, field, kind]) => {
-        const docId = 'state_' + field;
-        const sync = createDocSync(db.collection('app_data').doc(docId), ref, kind, field);
-        appDataSyncs[docId] = sync;
-        if(docId in appDataDocs) sync.ingest(appDataDocs[docId], true);
-        else if(field in legacyState) sync.importLegacy(legacyState[field]);
-      });
+
+      // Yeni düzene (alan başına ayrı belge) geçmeden önce veritabanı kurallarının buna izin verip
+      // vermediğini dene. İzin yoksa uygulama ESKİ tek belgeyle (app_data/appState) çalışmaya devam
+      // eder — yine sadece değişen alanı yazar ve canlı eşitlenir, hiçbir şey bozulmaz.
+      const hasNewDocs = Object.keys(appDataDocs).some(id => id.startsWith('state_'));
+      if(!hasNewDocs){
+        try{
+          await Promise.race([
+            db.collection('app_data').doc('state_appMeta').set({ schema: 2 }, { merge: true }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('zaman aşımı')), 7000)),
+          ]);
+          appDataDocs['state_appMeta'] = { schema: 2 };
+        }catch(probeErr){
+          legacyStorageMode = true;
+          console.warn('Yeni kayıt düzenine izin yok, eski tek-belge düzeniyle devam ediliyor:', probeErr);
+        }
+      }
+      if(legacyStorageMode){
+        const legacyRoot = {};
+        stateRefs.forEach(([ref, field]) => { legacyRoot[field] = ref; });
+        const kinds = {};
+        stateRefs.forEach(([ref, field, kind]) => { kinds[field] = kind; });
+        const sync = createDocSync(db.collection('app_data').doc('appState'), legacyRoot, 'object', 'appState', (field, raw) => {
+          const target = legacyRoot[field];
+          if(!target || raw === undefined) return;
+          const value = desanitizeFromFirestore(raw);
+          if(kinds[field] === 'array'){ target.length = 0; target.push(...(value || [])); }
+          else { Object.keys(target).forEach(k => delete target[k]); Object.assign(target, value || {}); }
+        });
+        appDataSyncs['appState'] = sync;
+        if('appState' in appDataDocs){
+          const known = {};
+          Object.keys(appDataDocs['appState']).forEach(f => { if(f in legacyRoot) known[f] = appDataDocs['appState'][f]; });
+          sync.ingest(known, true);
+        }
+      } else {
+        stateRefs.forEach(([ref, field, kind]) => {
+          const docId = 'state_' + field;
+          const sync = createDocSync(db.collection('app_data').doc(docId), ref, kind, field);
+          appDataSyncs[docId] = sync;
+          if(docId in appDataDocs) sync.ingest(appDataDocs[docId], true);
+          else if(field in legacyState) sync.importLegacy(legacyState[field]);
+        });
+      }
       const pkgSync = createDocSync(db.collection('app_data').doc('memberPackages'), memberPackages, 'object', 'memberPackages');
       appDataSyncs['memberPackages'] = pkgSync;
       if('memberPackages' in appDataDocs) pkgSync.ingest(appDataDocs['memberPackages'], true);
@@ -2231,14 +2281,14 @@
           let changed = false;
           snap.docChanges().forEach(ch => {
             const sync = appDataSyncs[ch.doc.id];
-            if(sync && ch.type !== 'removed' && sync.ingest(ch.doc.data(), false)) changed = true;
+            if(sync && ch.type !== 'removed' && sync.ingest(filterKnownFields(ch.doc.id, ch.doc.data()), false)) changed = true;
           });
           if(changed){ applyAppMeta(); scheduleRemoteRefresh(); }
         }, err => console.error('Canlı eşitleme (veri) hatası:', err));
       } else {
         Object.keys(appDataSyncs).forEach(docId => {
           db.collection('app_data').doc(docId).onSnapshot(snap => {
-            if(snap.exists && appDataSyncs[docId].ingest(snap.data(), false)){ applyAppMeta(); scheduleRemoteRefresh(); }
+            if(snap.exists && appDataSyncs[docId].ingest(filterKnownFields(docId, snap.data()), false)){ applyAppMeta(); scheduleRemoteRefresh(); }
           }, err => console.error('Canlı eşitleme (' + docId + ') hatası:', err));
         });
       }
@@ -3612,15 +3662,18 @@
   async function claimAttendance(logKey, entry, member){
     if(attendanceClaimsInFlight.has(logKey)) return;
     attendanceClaimsInFlight.add(logKey);
-    const logRef = db.collection('app_data').doc('state_attendanceLog');
+    const logRef = db.collection('app_data').doc(legacyStorageMode ? 'appState' : 'state_attendanceLog');
     const pkgRef = db.collection('app_data').doc('memberPackages');
     try{
       await flushAllAutosaves();
       await db.runTransaction(async (tx) => {
         const logSnap = await tx.get(logRef);
-        if(logSnap.exists && (logSnap.data() || {})[logKey]) return;
+        const logData = logSnap.exists ? (logSnap.data() || {}) : {};
+        const existingLog = legacyStorageMode ? (logData.attendanceLog || {}) : logData;
+        if(existingLog[logKey]) return;
         const pkgSnap = await tx.get(pkgRef);
-        tx.set(logRef, { [logKey]: sanitizeForFirestore(entry) }, { merge: true });
+        const logEntry = { [logKey]: sanitizeForFirestore(entry) };
+        tx.set(logRef, legacyStorageMode ? { attendanceLog: logEntry } : logEntry, { merge: true });
         if(pkgSnap.exists && (pkgSnap.data() || {})[member]){
           tx.update(pkgRef, new firebase.firestore.FieldPath(member, 'used'), firebase.firestore.FieldValue.increment(1));
         }

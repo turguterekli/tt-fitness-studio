@@ -24,6 +24,7 @@ async function newContext(opts={}){
     return route.abort();
   });
   // seed: sahte veritabanının başlangıç içeriği ({ 'koleksiyon/belge': {...} })
+  if(opts.rules) await ctx.addInitScript(r => localStorage.setItem('__fakeRules', r), opts.rules);
   if(opts.seed) await ctx.addInitScript(s => { if(!localStorage.getItem('__fakeStore')) localStorage.setItem('__fakeStore', s); }, JSON.stringify(opts.seed));
   return { browser, ctx };
 }
