@@ -1,8 +1,7 @@
-// Not: index.html şu an bu service worker'ı KAYDETMİYOR (geliştirme sürecinde kapalı).
-// Tekrar açıldığında eski sürüm sorununu yaşamamak için sayfa (HTML) isteklerinde
-// "önce ağ" stratejisi kullanılıyor: internet varsa her zaman en güncel sürüm gelir,
-// yalnızca çevrimdışıyken önbellekteki kopya gösterilir.
-const CACHE_NAME = 'tt-fitness-cache-v2';
+// Sayfa (HTML) isteklerinde "önce ağ" stratejisi kullanılır: internet varsa her zaman en güncel
+// sürüm gelir, yalnızca çevrimdışıyken önbellekteki kopya gösterilir. Böylece eski sürümün
+// takılı kalması sorunu yaşanmaz.
+const CACHE_NAME = 'tt-fitness-cache-v3';
 const FILES_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -11,7 +10,27 @@ const FILES_TO_CACHE = [
   './icon-512.png',
   './icon-maskable-192.png',
   './icon-maskable-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './fonts/fonts.css',
+  './fonts/ibm-plex-sans-latin-400-normal.woff2',
+  './fonts/ibm-plex-sans-latin-500-normal.woff2',
+  './fonts/ibm-plex-sans-latin-600-normal.woff2',
+  './fonts/ibm-plex-sans-latin-700-normal.woff2',
+  './fonts/ibm-plex-sans-latin-ext-400-normal.woff2',
+  './fonts/ibm-plex-sans-latin-ext-500-normal.woff2',
+  './fonts/ibm-plex-sans-latin-ext-600-normal.woff2',
+  './fonts/ibm-plex-sans-latin-ext-700-normal.woff2',
+  './fonts/oswald-latin-500-normal.woff2',
+  './fonts/oswald-latin-600-normal.woff2',
+  './fonts/oswald-latin-700-normal.woff2',
+  './fonts/oswald-latin-ext-500-normal.woff2',
+  './fonts/oswald-latin-ext-600-normal.woff2',
+  './fonts/oswald-latin-ext-700-normal.woff2',
+  './vendor/firebase-app-compat.js',
+  './vendor/firebase-auth-compat.js',
+  './vendor/firebase-firestore-compat.js',
+  './vendor/firebase-storage-compat.js',
+  './vendor/jspdf.umd.min.js'
 ];
 
 self.addEventListener('install', (event) => {
