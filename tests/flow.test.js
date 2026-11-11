@@ -82,8 +82,8 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.evaluate(() => openMemberSubScreen('messages'));
   check('member sees admin reply', (await page.textContent('#myMessageThread')).includes('görüşürüz'));
   // 10. stored doc size sanity
-  const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(window.__fakeStore).map(([k,v])=>[k, JSON.stringify(v).length])));
-  check('appState under 1MB', (sizes['app_data/appState']||0) < 1048576, 'appState '+sizes['app_data/appState']+' bytes');
+  const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(JSON.parse(localStorage.getItem('__fakeStore'))).map(([k,v])=>[k, JSON.stringify(v).length])));
+  check('all docs under 1MB', Math.max(...Object.values(sizes)) < 1048576, 'largest doc '+Math.max(...Object.values(sizes))+' bytes, docs '+Object.keys(sizes).length);
   const errs = errors.filter(e=>!/ERR_FAILED|Postür modeli|status of 404/.test(e));
   check('no JS errors', errs.length===0, errs.join(' | '));
   console.log(results.join('\n'));

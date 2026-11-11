@@ -1814,7 +1814,7 @@
     appId: "1:246112140718:web:dcac0d734605bb77ed5c3f",
     measurementId: "G-VSX8BTC34M"
   };
-  console.log('%cTT FITNESS BUILD: 2026-09-24-v9', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
+  console.log('%cTT FITNESS BUILD: 2026-11-11-v10', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const storage = firebase.storage();
@@ -1849,10 +1849,10 @@
       return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
     }
     if(Array.isArray(value)){
-      return value.map(v => Array.isArray(v) ? { __arr: sanitizeForFirestore(v) } : sanitizeForFirestore(v));
+      return value.map(v => v === undefined ? null : (Array.isArray(v) ? { __arr: sanitizeForFirestore(v) } : sanitizeForFirestore(v)));
     } else if(value && typeof value === 'object'){
       const out = {};
-      Object.keys(value).forEach(k => { out[k] = sanitizeForFirestore(value[k]); });
+      Object.keys(value).forEach(k => { if(value[k] !== undefined && typeof value[k] !== 'function') out[k] = sanitizeForFirestore(value[k]); });
       return out;
     }
     return value;
@@ -1918,56 +1918,250 @@
     if(text) text.textContent = 'Kaydedilemedi! ' + (msg || 'İnternetini kontrol et.');
   }
 
+  // ==================== BULUT EŞİTLEME ====================
+  // Eskiden tüm uygulama verisi TEK bir belgeye, her değişiklikte TOPLUCA yazılıyordu. İki cihaz
+  // (örn. yönetici + bir üye) aynı anda açıkken, biri kayıt yaptığında diğerinin az önce yaptığı
+  // değişikliği eski kopyasıyla eziyordu. Artık:
+  //  • Her veri türü kendi belgesinde durur (app_data/state_<alan>) ve yalnızca DEĞİŞEN kayıt
+  //    (örn. sadece o üyenin öğünleri) yazılır.
+  //  • Diğer cihazlarda yapılan değişiklikler canlı olarak bu cihaza da gelir (onSnapshot).
+  //  • Eski tek belge (app_data/appState) silinmez; ilk açılışta oradan aktarılır, yedek olarak kalır.
+  function stableStringify(v){
+    if(v === null || typeof v !== 'object') return JSON.stringify(v === undefined ? null : v);
+    if(Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
+    return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
+  }
+  function canonForCloud(value){ return stableStringify(sanitizeForFirestore(value)); }
+
+  let autosaveFlushers = [];
+  function registerAutosaveFlusher(fn){ autosaveFlushers.push(fn); }
+  async function flushAllAutosaves(){
+    for(const fn of autosaveFlushers){ try{ await fn(); }catch(e){} }
+  }
+
+  // Tek bir bulut belgesiyle eşitlenen bir veri yapısı.
+  //  kind 'object' → belgenin her alanı objenin bir anahtarı (genelde üye adı)
+  //  kind 'array'  → belge { items: [...] } şeklinde
+  function createDocSync(docRef, ref, kind, label){
+    const synced = new Map(); // anahtar -> bulutta olduğunu bildiğimiz son değer (kanonik metin)
+    let docExists = false;
+    function localLeaves(){
+      const out = new Map();
+      if(kind === 'array'){ out.set('items', { value: ref, json: canonForCloud(ref) }); }
+      else { Object.keys(ref).forEach(k => { if(k && ref[k] !== undefined) out.set(k, { value: ref[k], json: canonForCloud(ref[k]) }); }); }
+      return out;
+    }
+    function applyRemote(key, raw){
+      if(kind === 'array'){
+        const arr = desanitizeFromFirestore(raw) || [];
+        ref.length = 0; ref.push(...arr);
+      } else if(raw === undefined){ delete ref[key]; }
+      else { ref[key] = desanitizeFromFirestore(raw); }
+    }
+    // Buluttan gelen belgeyi yerel veriye işler. Yerelde henüz gönderilmemiş bir değişiklik
+    // varsa o kayda dokunmaz (yerel değişiklik bir sonraki turda buluta yazılır).
+    function ingest(data, isInitial){
+      docExists = true;
+      data = data || {};
+      if(isInitial && kind === 'object'){ Object.keys(ref).forEach(k => delete ref[k]); }
+      const local = localLeaves();
+      let changed = false;
+      const remoteKeys = kind === 'array' ? ('items' in data ? ['items'] : []) : Object.keys(data);
+      const keys = new Set([...remoteKeys, ...synced.keys()]);
+      keys.forEach(key => {
+        const has = remoteKeys.includes(key);
+        const rJson = has ? stableStringify(data[key]) : undefined;
+        if(rJson === synced.get(key)) return;
+        const l = local.get(key);
+        const lJson = l ? l.json : undefined;
+        if(isInitial || lJson === synced.get(key)){
+          if(lJson !== rJson){ applyRemote(key, has ? data[key] : undefined); changed = true; }
+        }
+        if(rJson === undefined) synced.delete(key); else synced.set(key, rJson);
+      });
+      return changed;
+    }
+    // Eski tek-belge düzeninden gelen veriyi yerel veriye alır (buluta bir sonraki turda yazılır)
+    function importLegacy(value){
+      if(kind === 'array'){ ref.length = 0; ref.push(...(value || [])); }
+      else { Object.keys(ref).forEach(k => delete ref[k]); Object.assign(ref, value || {}); }
+    }
+    async function tick(){
+      if(!cloudReady) return;
+      const local = localLeaves();
+      const args = []; const sent = []; const createPayload = {};
+      local.forEach((l, key) => {
+        if(l.json !== synced.get(key)){
+          const value = sanitizeForFirestore(l.value);
+          args.push(new firebase.firestore.FieldPath(key), value);
+          createPayload[key] = value;
+          sent.push([key, synced.get(key)]); synced.set(key, l.json);
+        }
+      });
+      [...synced.keys()].forEach(key => {
+        if(!local.has(key)){
+          args.push(new firebase.firestore.FieldPath(key), firebase.firestore.FieldValue.delete());
+          sent.push([key, synced.get(key)]); synced.delete(key);
+        }
+      });
+      if(!args.length) return;
+      showSaving();
+      try{
+        if(!docExists){
+          // Belge henüz yoksa doğrudan içeriğiyle oluştur (update, var olmayan belgede çalışmaz)
+          docExists = true;
+          await docRef.set(createPayload, { merge: true });
+        } else {
+          await docRef.update(...args);
+        }
+        showSaved();
+      }catch(err){
+        console.error(label + ' kaydedilemedi:', err);
+        showSaveFailed(err.message);
+        // Birkaç saniye sonra yeniden denensin diye "gönderildi" işaretini geri al
+        setTimeout(() => { sent.forEach(([key, prev]) => { if(prev === undefined) synced.delete(key); else synced.set(key, prev); }); }, 8000);
+      }
+    }
+    setInterval(tick, 1000);
+    registerAutosaveFlusher(tick);
+    return { ingest, importLegacy, tick };
+  }
+
+  // Her kaydı ayrı bir belge olan koleksiyonlar (üyeler, antrenörler) için eşitleme:
+  // sadece değişen kaydın değişen alanları yazılır.
+  function createCollectionSync(arr, collectionName, withDefaults){
+    const synced = new Map(); // belge id -> { alan: kanonik metin }
+    function fieldsOf(obj){
+      const out = {};
+      Object.keys(obj).forEach(k => { if(k !== '_id' && obj[k] !== undefined) out[k] = canonForCloud(obj[k]); });
+      return out;
+    }
+    function markSynced(item){ if(item._id) synced.set(item._id, fieldsOf(item)); }
+    function ingestDoc(id, data, removed){
+      const idx = arr.findIndex(x => x._id === id);
+      if(removed){
+        synced.delete(id);
+        if(idx !== -1){ arr.splice(idx, 1); return true; }
+        return false;
+      }
+      const remote = {};
+      Object.keys(data || {}).forEach(k => { remote[k] = stableStringify(data[k]); });
+      if(idx === -1){
+        const item = { ...desanitizeFromFirestore(data || {}), _id: id };
+        arr.push(withDefaults ? withDefaults(item) : item);
+        synced.set(id, remote);
+        return true;
+      }
+      const item = arr[idx];
+      const prev = synced.get(id) || {};
+      let changed = false;
+      new Set([...Object.keys(remote), ...Object.keys(prev)]).forEach(k => {
+        if(remote[k] === prev[k]) return;
+        const lJson = (k in item && item[k] !== undefined) ? canonForCloud(item[k]) : undefined;
+        if(lJson === prev[k] && lJson !== remote[k]){
+          if(remote[k] === undefined) delete item[k]; else item[k] = desanitizeFromFirestore(data[k]);
+          changed = true;
+        }
+      });
+      synced.set(id, remote);
+      return changed;
+    }
+    async function tick(){
+      if(!cloudReady) return;
+      const batch = db.batch();
+      let count = 0;
+      arr.forEach(item => {
+        if(!item._id){
+          const ref = db.collection(collectionName).doc();
+          item._id = ref.id;
+          const data = sanitizeForFirestore({ ...item });
+          delete data._id;
+          batch.set(ref, data);
+          synced.set(item._id, fieldsOf(item));
+          count++;
+          return;
+        }
+        const now = fieldsOf(item);
+        const prev = synced.get(item._id) || {};
+        const payload = {};
+        Object.keys(now).forEach(k => { if(now[k] !== prev[k]) payload[k] = sanitizeForFirestore(item[k]); });
+        Object.keys(prev).forEach(k => { if(!(k in now)) payload[k] = firebase.firestore.FieldValue.delete(); });
+        if(Object.keys(payload).length){
+          batch.set(db.collection(collectionName).doc(item._id), payload, { merge: true });
+          synced.set(item._id, now);
+          count++;
+        }
+      });
+      if(!count) return;
+      showSaving();
+      try{ await batch.commit(); showSaved(); }
+      catch(err){ console.error(collectionName + ' kaydedilemedi:', err); showSaveFailed(err.message); }
+    }
+    setInterval(tick, 1000);
+    registerAutosaveFlusher(tick);
+    return { ingestDoc, markSynced, tick };
+  }
+
+  // Başka bir cihazdan veri geldiğinde ekranı tazeler. Kullanıcı o an bir kutuya yazı
+  // yazıyorsa bölmemek için yazmayı bitirmesini bekler; seçili açılır kutu/yazılmış metin korunur.
+  let remoteRefreshTimer = null;
+  function scheduleRemoteRefresh(){
+    if(remoteRefreshTimer) return;
+    remoteRefreshTimer = setTimeout(function attempt(){
+      const ae = document.activeElement;
+      const typing = ae && (ae.tagName === 'TEXTAREA' || (ae.tagName === 'INPUT' && !['checkbox','radio','button','file'].includes(ae.type)));
+      if(typing){ remoteRefreshTimer = setTimeout(attempt, 1500); return; }
+      remoteRefreshTimer = null;
+      try{ refreshAllViews(); }catch(e){ console.error('Ekran tazelenemedi:', e); }
+    }, 400);
+  }
+
+  const appDataSyncs = {}; // belge adı -> createDocSync sonucu
+  let membersSync = null, trainersSync = null;
+  const memberNumericDefaults = { water:0, coffee:0, waterCredits:0, coffeeCredits:0 };
+  function applyMemberDefaults(m){
+    // Firestore'da elle oluşturulmuş kayıtlarda eksik olabilecek sayısal/varsayılan alanları doldur,
+    // yoksa toplama işlemlerinde NaN görünür. Daha önce yanlışlıkla kaydedilmiş NaN değerlerini de onarır.
+    const out = Object.assign(m, { status:"active", role:"member", group:null, ...memberNumericDefaults, ...m });
+    Object.keys(memberNumericDefaults).forEach(k => {
+      if(typeof out[k] !== 'number' || Number.isNaN(out[k])) out[k] = memberNumericDefaults[k];
+    });
+    return out;
+  }
+
   async function initFirebaseAndLoadData(){
     try{
       await firebase.auth().signInAnonymously();
-      const [membersSnap, trainersSnap, packagesDoc] = await Promise.all([
+      const [membersSnap, trainersSnap] = await Promise.all([
         db.collection('members').get(),
-        db.collection('trainers').get(),
-        db.collection('app_data').doc('memberPackages').get()
+        db.collection('trainers').get()
       ]);
+
+      // ---- Üyeler ----
+      membersSync = createCollectionSync(members, 'members', applyMemberDefaults);
       if(!membersSnap.empty){
-        // Firestore'da elle oluşturulmuş kayıtlarda eksik olabilecek sayısal/varsayılan alanları doldur,
-        // yoksa toplama işlemlerinde NaN görünür. Daha önce yanlışlıkla kaydedilmiş NaN değerlerini de onarır.
-        const memberNumericDefaults = { water:0, coffee:0, waterCredits:0, coffeeCredits:0 };
-        const memberDefaults = { ...memberNumericDefaults, status:"active", role:"member", group:null };
         members.length = 0;
-        membersSnap.forEach(doc => {
-          const m = { ...memberDefaults, ...doc.data(), _id: doc.id };
-          Object.keys(memberNumericDefaults).forEach(k => {
-            if(typeof m[k] !== 'number' || Number.isNaN(m[k])) m[k] = memberNumericDefaults[k];
-          });
-          members.push(m);
-        });
-      }
-      if(!trainersSnap.empty){
-        // Bulut verisiyle mevcut kayıtları birleştir (renk/etiket gibi tasarım alanlarını koru,
-        // isim/rol/bio/sertifika gibi içerik alanlarını buluttan al)
-        trainersSnap.forEach(doc => {
-          const cloud = { ...doc.data(), _id: doc.id };
-          const existing = trainers.find(t => t.name === cloud.name);
-          if(existing){ Object.assign(existing, cloud); }
-          else { trainers.push(cloud); }
-        });
-      }
-      if(packagesDoc.exists){
-        const cloudPkgs = desanitizeFromFirestore(packagesDoc.data() || {});
-        Object.keys(memberPackages).forEach(k => delete memberPackages[k]);
-        Object.assign(memberPackages, cloudPkgs);
+        membersSnap.forEach(doc => membersSync.ingestDoc(doc.id, doc.data(), false));
       }
 
-      // Uygulamanın geri kalan tüm üye verilerini (mesajlar, ödemeler, program, notlar, sözleşme
-      // onayları, duyurular, finans vb.) TEK bir bulut belgesinde topluca tutuyoruz.
-      // Not: Fotoğraf içeren alanlar (postür fotoğrafları, öğün fotoğrafları) bu listede YOK —
-      // onlar ayrı bir adımda Firebase Storage'a bağlanacak, metin/sayı verisi burada.
-      const appStateDoc = await db.collection('app_data').doc('appState').get();
-      const appStateRefs = [
+      // ---- Antrenörler ----
+      // Bulut verisiyle mevcut kayıtları birleştir (renk/etiket gibi tasarım alanlarını koru,
+      // isim/rol/bio/sertifika gibi içerik alanlarını buluttan al)
+      trainersSync = createCollectionSync(trainers, 'trainers', null);
+      trainersSnap.forEach(doc => {
+        const existing = trainers.find(t => !t._id && t.name === doc.data().name);
+        if(existing) existing._id = doc.id;
+        trainersSync.ingestDoc(doc.id, doc.data(), false);
+        if(existing) Object.assign(existing, desanitizeFromFirestore(doc.data()));
+      });
+
+      // ---- Diğer tüm veriler (app_data koleksiyonu) ----
+      const stateRefs = [
         [announcements, 'announcements', 'array'],
         [financeEntries, 'financeEntries', 'array'],
         [passwordResetRequests, 'passwordResetRequests', 'array'],
         [sessionRequests, 'sessionRequests', 'array'],
         [pendingCreditRequests, 'pendingCreditRequests', 'array'],
-        [notificationCenterItems, 'notificationCenterItems', 'array'],
         [memberPayments, 'memberPayments', 'object'],
         [memberMessages, 'memberMessages', 'object'],
         [adminMessageUnread, 'adminMessageUnread', 'object'],
@@ -1999,108 +2193,75 @@
         [memberProfiles, 'memberProfiles', 'object'],
         [memberMeals, 'memberMeals', 'object'],
         [memberTrainerNotes, 'memberTrainerNotes', 'object'],
+        [appMeta, 'appMeta', 'object'],
+        [mealResetMonth, 'mealResetMonth', 'object'],
       ];
-      if(appStateDoc.exists){
-        const cloudState = desanitizeFromFirestore(appStateDoc.data() || {});
-        appStateRefs.forEach(([ref, field, kind]) => {
-          if(!(field in cloudState)) return;
-          if(kind === 'array'){ ref.length = 0; ref.push(...(cloudState[field] || [])); }
-          else { Object.keys(ref).forEach(k => delete ref[k]); Object.assign(ref, cloudState[field] || {}); }
+      // Önce koleksiyonu topluca okumayı dene; veritabanı kuralları toplu okumaya izin vermiyorsa
+      // belgeleri tek tek oku (eski sürümün yaptığı gibi).
+      const appDataDocs = {};
+      let appDataListAllowed = true;
+      try{
+        const appDataSnap = await db.collection('app_data').get();
+        appDataSnap.forEach(doc => { appDataDocs[doc.id] = doc.data() || {}; });
+      }catch(listErr){
+        appDataListAllowed = false;
+        console.warn('app_data topluca okunamadı, belgeler tek tek okunuyor:', listErr);
+        const ids = ['appState', 'memberPackages', ...stateRefs.map(r => 'state_' + r[1])];
+        const snaps = await Promise.all(ids.map(id => db.collection('app_data').doc(id).get()));
+        snaps.forEach((snap, i) => { if(snap.exists) appDataDocs[ids[i]] = snap.data() || {}; });
+      }
+      const legacyState = desanitizeFromFirestore(appDataDocs['appState'] || {});
+      stateRefs.forEach(([ref, field, kind]) => {
+        const docId = 'state_' + field;
+        const sync = createDocSync(db.collection('app_data').doc(docId), ref, kind, field);
+        appDataSyncs[docId] = sync;
+        if(docId in appDataDocs) sync.ingest(appDataDocs[docId], true);
+        else if(field in legacyState) sync.importLegacy(legacyState[field]);
+      });
+      const pkgSync = createDocSync(db.collection('app_data').doc('memberPackages'), memberPackages, 'object', 'memberPackages');
+      appDataSyncs['memberPackages'] = pkgSync;
+      if('memberPackages' in appDataDocs) pkgSync.ingest(appDataDocs['memberPackages'], true);
+
+      applyAppMeta();
+      cloudReady = true;
+
+      // ---- Canlı eşitleme: diğer cihazlardaki değişiklikleri dinle ----
+      if(appDataListAllowed){
+        db.collection('app_data').onSnapshot(snap => {
+          let changed = false;
+          snap.docChanges().forEach(ch => {
+            const sync = appDataSyncs[ch.doc.id];
+            if(sync && ch.type !== 'removed' && sync.ingest(ch.doc.data(), false)) changed = true;
+          });
+          if(changed){ applyAppMeta(); scheduleRemoteRefresh(); }
+        }, err => console.error('Canlı eşitleme (veri) hatası:', err));
+      } else {
+        Object.keys(appDataSyncs).forEach(docId => {
+          db.collection('app_data').doc(docId).onSnapshot(snap => {
+            if(snap.exists && appDataSyncs[docId].ingest(snap.data(), false)){ applyAppMeta(); scheduleRemoteRefresh(); }
+          }, err => console.error('Canlı eşitleme (' + docId + ') hatası:', err));
         });
       }
-      startAutosaveAppState(appStateRefs);
+      db.collection('members').onSnapshot(snap => {
+        let changed = false;
+        snap.docChanges().forEach(ch => { if(membersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) changed = true; });
+        if(changed) scheduleRemoteRefresh();
+      }, err => console.error('Canlı eşitleme (üyeler) hatası:', err));
+      db.collection('trainers').onSnapshot(snap => {
+        let changed = false;
+        snap.docChanges().forEach(ch => { if(trainersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) changed = true; });
+        if(changed) scheduleRemoteRefresh();
+      }, err => console.error('Canlı eşitleme (antrenörler) hatası:', err));
 
-      cloudReady = true;
-      startAutosave(members, 'members');
-      startAutosave(trainers, 'trainers');
-      startAutosaveObject(memberPackages, 'app_data/memberPackages');
       tryAutoLogin();
       hideCloudLoading();
+      runTimeChecks();
     }catch(err){
       console.error('Firebase yüklenemedi:', err);
       showCloudError('Sunucuya bağlanılamadı. İnternet bağlantını kontrol edip sayfayı yenile.');
     }
   }
 
-  // Her autosave döngüsü kendi "tick" fonksiyonunu burada kayıt ettirir — böylece önemli bir
-  // kayıt işleminden hemen sonra (F5'e basılmadan önce) elle "şimdi kaydet" tetiklenebilir.
-  // Aksi halde değişiklik en fazla 1000ms'lik döngü aralığını beklemek zorunda kalıyordu ve
-  // kullanıcı o arada sayfayı yenilerse (F5) henüz buluta yazılmamış değişiklik kayboluyordu.
-  let autosaveFlushers = [];
-  function registerAutosaveFlusher(fn){ autosaveFlushers.push(fn); }
-  async function flushAllAutosaves(){
-    for(const fn of autosaveFlushers){ try{ await fn(); }catch(e){} }
-  }
-
-  // Basit otomatik kayıt: her birkaç saniyede bir dizide değişiklik olup olmadığına bakar,
-  // değiştiyse tüm kayıtları Firestore'a yazar (üye/antrenör ekleme, düzenleme dahil).
-  function startAutosave(arrRef, collectionName){
-    let lastJSON = JSON.stringify(arrRef);
-    const tick = async () => {
-      if(!cloudReady) return;
-      const json = JSON.stringify(arrRef);
-      if(json === lastJSON) return;
-      lastJSON = json;
-      showSaving();
-      try{
-        const batch = db.batch();
-        arrRef.forEach(item => {
-          let ref;
-          if(item._id){ ref = db.collection(collectionName).doc(item._id); }
-          else { ref = db.collection(collectionName).doc(); item._id = ref.id; }
-          const data = sanitizeForFirestore({ ...item });
-          delete data._id;
-          batch.set(ref, data, { merge: true });
-        });
-        await batch.commit();
-        showSaved();
-      }catch(err){ console.error(collectionName + ' kaydedilemedi:', err); showSaveFailed(err.message); }
-    };
-    setInterval(tick, 1000);
-    registerAutosaveFlusher(tick);
-  }
-  // Tek bir bulut belgesinde tutulan sözlük/obje verileri için otomatik kayıt (örn. paket/ders hakları)
-  function startAutosaveObject(objRef, docPath){
-    let lastJSON = JSON.stringify(objRef);
-    console.log('[autosave] izlemeye başladı:', docPath, lastJSON);
-    const tick = async () => {
-      if(!cloudReady) return;
-      const json = JSON.stringify(objRef);
-      if(json === lastJSON) return;
-      console.log('[autosave] değişiklik yakalandı, yazılıyor:', docPath, json);
-      lastJSON = json;
-      showSaving();
-      try{ await db.doc(docPath).set(sanitizeForFirestore(objRef)); console.log('[autosave] YAZILDI:', docPath); showSaved(); }
-      catch(err){ console.error('[autosave] ' + docPath + ' kaydedilemedi:', err); showSaveFailed(err.message); }
-    };
-    setInterval(tick, 1000);
-    registerAutosaveFlusher(tick);
-  }
-  // Onlarca farklı veri listesini (duyurular, ödemeler, mesajlar, notlar, sözleşmeler vb.)
-  // tek bir bulut belgesine, değişiklik olduğunda topluca kaydeder.
-  function startAutosaveAppState(refs){
-    const snapshot = () => {
-      const obj = {};
-      refs.forEach(([ref, field]) => { obj[field] = ref; });
-      return JSON.stringify(obj);
-    };
-    let lastJSON = snapshot();
-    const tick = async () => {
-      if(!cloudReady) return;
-      const json = snapshot();
-      if(json === lastJSON) return;
-      lastJSON = json;
-      showSaving();
-      try{
-        const payload = {};
-        refs.forEach(([ref, field]) => { payload[field] = ref; });
-        await db.collection('app_data').doc('appState').set(sanitizeForFirestore(payload));
-        showSaved();
-      }catch(err){ console.error('appState kaydedilemedi:', err); showSaveFailed(err.message); }
-    };
-    setInterval(tick, 1000);
-    registerAutosaveFlusher(tick);
-  }
   // Kayıt sürerken sayfa kapatılır/yenilenirse tarayıcı uyarsın (masaüstünde çalışır, bazı
   // mobil tarayıcılarda görünmeyebilir ama zarar vermez).
   window.addEventListener('beforeunload', (e) => {
@@ -2109,7 +2270,6 @@
   // ==================== /FIREBASE BAĞLANTISI ====================
 
   const days = ["PZT","SAL","ÇAR","PER","CUM","CMT","PAZ"];
-  const dayNums = [8,9,10,11,12,13,14];
 
   const trainers = [
     {name:"Turgut Terekli", role:"Güç Antrenmanı & Kondisyon", cert:"TVGF 2. Kademe Antrenör", tags:["Güç","Kardiyo","Atletik Performans","Medical Fitness"], color:"#CE997A", bio:"Salonun kurucu antrenörlerinden. Güç, kondisyon, atletik performans ve medikal fitness odaklı dersleri yönetiyor."},
@@ -2118,6 +2278,17 @@
 
   // ---- Test/Demo amaçlı sistem saati (admin ayarlayabilir) ----
   let simulatedOffsetMs = 0;
+  // Tüm cihazlarda ortak olması gereken küçük ayarlar (bulutta saklanır):
+  // { contractVersion, leaderboardSeasonStart, attendanceCheckedUntil }
+  let appMeta = {};
+  let mealResetMonth = {}; // { memberName: 'YYYY-AA' } — öğün kayıtlarının en son hangi ay için sıfırlandığı
+  let memberSessionActive = false; // şu an bu cihazda bir ÜYE mi giriş yapmış (yönetici/çıkış durumunda false)
+  function applyAppMeta(){
+    if(typeof appMeta.contractVersion === 'number') CONTRACT_VERSION = appMeta.contractVersion;
+    if(appMeta.leaderboardSeasonStart) leaderboardSeasonStart = appMeta.leaderboardSeasonStart;
+    const versionEl = document.getElementById('contractVersionDisplay');
+    if(versionEl) versionEl.textContent = CONTRACT_VERSION;
+  }
   // Kısıtlı yönetici hesabı (örn. Seray Atagan) sadece kendi antrenörlük verilerini görür.
   // null = tam yetkili yönetici (her şeyi görür/düzenler).
   let adminTrainerScope = null;
@@ -2230,25 +2401,32 @@
   }
 
   // ---- Öğünlerin aylık sıfırlanması ----
-  let lastMealMonth = null;
+  // Eskiden "hangi ayda sıfırlandı" bilgisi sadece sayfa açıkken hafızada duruyordu; uygulama ay
+  // dönümünde açık değilse sıfırlama hiç olmuyordu. Artık üye başına bulutta saklanıyor ve
+  // üye yeni ayda ilk kez uygulamayı açtığında, önceki aylara ait kayıtlar temizleniyor.
   function checkMonthlyMealReset(){
-    const currentMonth = toLocalDateStr(getNow()).slice(0,7); // YYYY-MM
-    if(lastMealMonth === null){
-      lastMealMonth = currentMonth;
-      return;
-    }
-    if(currentMonth !== lastMealMonth){
-      lastMealMonth = currentMonth;
+    if(!cloudReady || !memberSessionActive) return;
+    const currentMonth = toLocalDateStr(getNow()).slice(0,7); // YYYY-AA
+    const last = mealResetMonth[currentMemberName];
+    if(!last){ mealResetMonth[currentMemberName] = currentMonth; return; }
+    if(currentMonth !== last){
+      mealResetMonth[currentMemberName] = currentMonth;
       const meals = getMemberMeals(currentMemberName);
-      Object.keys(meals).forEach(k => meals[k] = []);
+      let removed = 0;
+      Object.keys(meals).forEach(k => {
+        const keep = (meals[k] || []).filter(m => m.date && m.date.slice(0,7) === currentMonth);
+        removed += (meals[k] || []).length - keep.length;
+        meals[k] = keep;
+      });
       if(typeof renderMeals === 'function') renderMeals();
-      if(typeof renderAdminMeals === 'function') renderAdminMeals();
-      const banner = document.getElementById('monthlyResetBanner');
-      if(banner){
-        banner.style.display = 'flex';
-        document.getElementById('monthlyResetText').textContent = 'Yeni ay başladı! Geçen ayki öğün kayıtların sıfırlandı, temiz bir sayfa açtık — beslenmeni bu ay yeniden takip edebilirsin.';
+      if(removed > 0){
+        const banner = document.getElementById('monthlyResetBanner');
+        if(banner){
+          banner.style.display = 'flex';
+          document.getElementById('monthlyResetText').textContent = 'Yeni ay başladı! Geçen ayki öğün kayıtların sıfırlandı, temiz bir sayfa açtık — beslenmeni bu ay yeniden takip edebilirsin.';
+        }
+        tryBrowserNotification('Yeni ay başladı, öğün kayıtların sıfırlandı.');
       }
-      tryBrowserNotification('Yeni ay başladı, öğün kayıtların sıfırlandı.');
     }
   }
 
@@ -2257,7 +2435,7 @@
   function renderDays(){
     document.getElementById('dayRow').innerHTML = days.map((d,i)=>`
       <div class="day-chip ${i===selectedDay?'active':''}" onclick="selectDay(${i})">
-        <span class="d">${d}</span><span class="n">${dayNums[i]}</span>
+        <span class="d">${d}</span><span class="n">${parseInt(dateOfThisWeekDay(i).slice(8), 10)}</span>
       </div>`).join('');
   }
 
@@ -2379,20 +2557,42 @@
   function selectDay(i){ selectedDay = i; renderDays(); renderClasses(); }
 
   // ---- Bildirim Merkezi (tüm banner'ları tek yerde toplar) ----
+  // Bildirimler eskiden bulutta TEK bir ortak listede tutuluyordu: bir üyenin bildirimi herkese
+  // görünüyor, biri sildiğinde herkesten siliniyordu. Artık her üyenin bildirimleri kendi
+  // cihazında, kendi adına saklanıyor; kapatılan bildirim sayfa yenilenince geri gelmiyor.
   let notificationCenterItems = [];
+  let dismissedNotificationIds = new Set();
+  function memberLocalKey(kind){ return 'ttf_' + kind + '_' + currentMemberName; }
+  function loadMemberLocalState(){
+    try{
+      notificationCenterItems = JSON.parse(localStorage.getItem(memberLocalKey('notifs')) || '[]');
+      dismissedNotificationIds = new Set(JSON.parse(localStorage.getItem(memberLocalKey('dismissed')) || '[]'));
+    }catch(e){ notificationCenterItems = []; dismissedNotificationIds = new Set(); }
+    dismissedAnnouncements = new Set([...dismissedNotificationIds].filter(id => id.startsWith('announce-')).map(id => parseInt(id.slice(9), 10)));
+  }
+  function saveMemberLocalState(){
+    try{
+      localStorage.setItem(memberLocalKey('notifs'), JSON.stringify(notificationCenterItems.slice(-50)));
+      localStorage.setItem(memberLocalKey('dismissed'), JSON.stringify([...dismissedNotificationIds].slice(-300)));
+    }catch(e){}
+  }
 
   function pushNotification(id, icon, text){
+    if(dismissedNotificationIds.has(id)) return;
     const existing = notificationCenterItems.find(n => n.id === id);
     if(existing){ existing.text = text; }
     else { notificationCenterItems.push({ id, icon, text }); }
+    saveMemberLocalState();
     renderNotificationCenter();
   }
   function removeNotificationItem(id){
     const before = notificationCenterItems.length;
     notificationCenterItems = notificationCenterItems.filter(n => n.id !== id);
-    if(notificationCenterItems.length !== before) renderNotificationCenter();
+    if(notificationCenterItems.length !== before){ saveMemberLocalState(); renderNotificationCenter(); }
   }
   function dismissNotificationCenterItem(id){
+    // Tarihli/tek seferlik bildirimler (duyuru, doğum günü, günlük hatırlatma) kapatılınca tekrar gösterilmez
+    if(/\d{4}-\d{2}-\d{2}|^(announce|birthday|season)-/.test(id)) dismissedNotificationIds.add(id);
     if(id.startsWith('announce-') && typeof dismissAnnouncement === 'function'){
       dismissAnnouncement(parseInt(id.slice(9), 10));
     }
@@ -2905,7 +3105,8 @@
   function checkLeaderboardSeasonReset(){
     const now = getNow();
     const todayStr = toLocalDateStr(now);
-    if(!leaderboardSeasonStart){ leaderboardSeasonStart = todayStr; return; }
+    if(!cloudReady) return;
+    if(!leaderboardSeasonStart){ leaderboardSeasonStart = todayStr; appMeta.leaderboardSeasonStart = todayStr; return; }
     const start = new Date(leaderboardSeasonStart);
     const monthsPassed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
     if(monthsPassed >= 3){
@@ -2921,6 +3122,7 @@
       }
       realMembers.forEach(m => { seasonBaselinePoints[m.name] = computeTotalPoints(m.name); });
       leaderboardSeasonStart = todayStr;
+      appMeta.leaderboardSeasonStart = todayStr;
     }
   }
 
@@ -3168,6 +3370,16 @@
   }
 
   function tryBrowserNotification(msg){
+    // Aynı bildirim aynı gün içinde (sayfa yenilense bile) ikinci kez gösterilmesin
+    try{
+      const today = toLocalDateStr(getNow());
+      let seen = JSON.parse(localStorage.getItem('ttf_browser_notifs') || '{}');
+      if(seen.date !== today) seen = { date: today, msgs: [] };
+      const sig = currentMemberName + '|' + msg;
+      if(seen.msgs.includes(sig)) return;
+      seen.msgs.push(sig);
+      localStorage.setItem('ttf_browser_notifs', JSON.stringify(seen));
+    }catch(e){}
     try{
       if(typeof Notification === 'undefined') return;
       if(Notification.permission === 'granted'){
@@ -3394,39 +3606,72 @@
     return occ;
   }
 
-  function runAutoAttendance(){
-    const now = getNow();
-    Object.keys(memberPrograms).forEach(member => {
-      memberPrograms[member].forEach(entry => {
-        const occDate = occurrenceDateTimeThisWeek(entry.day, entry.time);
-        const dateKey = toLocalDateStr(occDate);
-        const logKey = `${member}|${entry.day}|${entry.time}|${dateKey}`;
-        // Üyenin paketi bu tarihten SONRA başladıysa (örn. programı hafta ortasında atadık ve
-        // bu haftanın daha önceki günleri zaten geçmişse), o geçmiş günü otomatik "geldi" sayıp
-        // ders hakkından düşmemeliyiz — paket henüz o gün yokken bir ders tüketilmiş olmaz.
-        const pkgForMember = memberPackages[member];
-        const beforePackageStart = pkgForMember && pkgForMember.start && dateKey < pkgForMember.start;
-        if(now >= occDate && !attendanceLog[logKey] && !beforePackageStart){
-          // Katılım onayında "Katılamayacağım" dese bile ders hakkı düşer — grup seansları için de geçerli:
-          // seans tutulduysa (saat geçtiyse) tek kişi bile gelse herkesin hakkı düşer.
-          attendanceLog[logKey] = {
-            status: 'done', member, day: entry.day, time: entry.time,
-            date: dateKey, name: entry.name, trainer: entry.trainer,
-          };
-          if(memberPackages[member]){
-            memberPackages[member].used = (memberPackages[member].used || 0) + 1;
-          }
-          if(member === currentMemberName){
-            sessionsUsed = Math.min(sessionsTotal, sessionsUsed + 1);
-            renderMembership();
-            if(typeof renderBadges === 'function') renderBadges();
-            if(typeof renderLeaderboard === 'function') renderLeaderboard();
-          }
+  // Bir dersin "yapıldı" olarak işlenip ders hakkından düşülmesi. Aynı anda açık olan birden fazla
+  // cihaz aynı dersi iki kez düşmesin diye buluttaki kayıt üzerinde tek seferlik (transaction) yapılır.
+  const attendanceClaimsInFlight = new Set();
+  async function claimAttendance(logKey, entry, member){
+    if(attendanceClaimsInFlight.has(logKey)) return;
+    attendanceClaimsInFlight.add(logKey);
+    const logRef = db.collection('app_data').doc('state_attendanceLog');
+    const pkgRef = db.collection('app_data').doc('memberPackages');
+    try{
+      await flushAllAutosaves();
+      await db.runTransaction(async (tx) => {
+        const logSnap = await tx.get(logRef);
+        if(logSnap.exists && (logSnap.data() || {})[logKey]) return;
+        const pkgSnap = await tx.get(pkgRef);
+        tx.set(logRef, { [logKey]: sanitizeForFirestore(entry) }, { merge: true });
+        if(pkgSnap.exists && (pkgSnap.data() || {})[member]){
+          tx.update(pkgRef, new firebase.firestore.FieldPath(member, 'used'), firebase.firestore.FieldValue.increment(1));
         }
       });
+    } finally {
+      attendanceClaimsInFlight.delete(logKey);
+    }
+  }
+
+  function runAutoAttendance(){
+    if(!cloudReady) return;
+    const now = getNow();
+    const todayStr = toLocalDateStr(now);
+    const thisMonday = getWeekMonday(todayStr);
+    // Uygulama günlerce/haftalarca hiç açılmadıysa o arada yapılan dersler de işlensin:
+    // en son kontrol edilen günden bu yana geçen haftaları da (en fazla 8 hafta) tara.
+    const checkedUntil = appMeta.attendanceCheckedUntil || null;
+    const weekOffsets = [0];
+    if(checkedUntil && checkedUntil < thisMonday){
+      const weeksBack = Math.min(8, Math.round((new Date(thisMonday) - new Date(getWeekMonday(checkedUntil))) / (7 * 86400000)));
+      for(let w = 1; w <= weeksBack; w++) weekOffsets.push(-w);
+    }
+    const claims = [];
+    Object.keys(memberPrograms).forEach(member => {
+      (memberPrograms[member] || []).forEach(entry => {
+        weekOffsets.forEach(off => {
+          const occDate = occurrenceDateTimeThisWeek(entry.day, entry.time);
+          occDate.setDate(occDate.getDate() + off * 7);
+          const dateKey = toLocalDateStr(occDate);
+          if(off < 0 && dateKey < checkedUntil) return; // o gün zaten kontrol edilmişti
+          const logKey = `${member}|${entry.day}|${entry.time}|${dateKey}`;
+          // Üyenin paketi bu tarihten SONRA başladıysa (örn. programı hafta ortasında atadık ve
+          // bu haftanın daha önceki günleri zaten geçmişse), o geçmiş günü otomatik "geldi" sayıp
+          // ders hakkından düşmemeliyiz — paket henüz o gün yokken bir ders tüketilmiş olmaz.
+          const pkgForMember = memberPackages[member];
+          const beforePackageStart = pkgForMember && pkgForMember.start && dateKey < pkgForMember.start;
+          if(now >= occDate && !attendanceLog[logKey] && !beforePackageStart){
+            // Katılım onayında "Katılamayacağım" dese bile ders hakkı düşer — grup seansları için de geçerli:
+            // seans tutulduysa (saat geçtiyse) tek kişi bile gelse herkesin hakkı düşer.
+            claims.push(claimAttendance(logKey, {
+              status: 'done', member, day: entry.day, time: entry.time,
+              date: dateKey, name: entry.name, trainer: entry.trainer,
+            }, member));
+          }
+        });
+      });
     });
-    renderAttendanceLog();
-    if(typeof renderAdminHome === 'function') renderAdminHome();
+    Promise.all(claims).then(() => {
+      // Test için saat ileri/geri alınmışken "kontrol edildi" tarihini kaydetme
+      if(simulatedOffsetMs === 0 && appMeta.attendanceCheckedUntil !== todayStr) appMeta.attendanceCheckedUntil = todayStr;
+    }).catch(err => console.error('Otomatik yoklama işlenemedi:', err));
   }
 
   let expandedAttendanceMembers = new Set();
@@ -4473,8 +4718,10 @@
     { icon: '📈', title: 'Gelişim', text: 'Kilo takibin, ölçümlerin, rozetlerin ve sıralamadaki yerin hep burada.' },
   ];
   function maybeShowOnboarding(){
+    try{ if(localStorage.getItem('ttf_onboarded_' + currentMemberName)) onboardingShown[currentMemberName] = true; }catch(e){}
     if(onboardingShown[currentMemberName]) return;
     onboardingShown[currentMemberName] = true;
+    try{ localStorage.setItem('ttf_onboarded_' + currentMemberName, '1'); }catch(e){}
     onboardingStepIndex = 0;
     renderOnboardingStep();
     document.getElementById('onboardingOverlay').style.display = 'flex';
@@ -4635,6 +4882,7 @@
     document.getElementById('logoutConfirmBox').style.display = 'none';
   }
   function logOut(){
+    memberSessionActive = false;
     try{ localStorage.removeItem('ttf_session'); }catch(e){}
     document.getElementById('member-app').style.display = 'none';
     document.getElementById('admin-app').style.display = 'none';
@@ -4699,6 +4947,7 @@
       return;
     }
     completeLogin(found);
+    runTimeChecks();
   }
 
   // "Beni hatırla": şifre doğrulaması bittikten sonra oturumu bu cihazda saklar,
@@ -4710,6 +4959,7 @@
     if(found.role === 'admin'){
       // Aynı giriş ekranı — sadece hesabın rolüne göre farklı arayüz açılıyor
       adminTrainerScope = found.adminScope === 'own' ? found.trainerScope : null;
+      memberSessionActive = false;
       document.getElementById('member-app').style.display = 'none';
       document.getElementById('admin-app').style.display = 'contents';
       renderPriceForm(); renderConsumption(); renderAdminAvailability(); renderAdminMeals(); renderProgramForm(); renderAssignedPrograms(); renderEditMemberForm(); renderAttendanceLog(); renderMemberProfiles(); renderSystemClock(); initSystemClockInput(); renderMealReminderForm(); renderAnalytics(); renderAnnounceForm(); renderProgressAdminMemberSelect(); setFinanceType('income'); renderFinance(); toggleFinanceTabVisibility(); renderAdminHome(); checkAdminBirthdayAlert();
@@ -4719,6 +4969,11 @@
     }
 
     currentMemberName = found.name;
+    memberSessionActive = true;
+    loadMemberLocalState();
+    selectedDay = (getNow().getDay() + 6) % 7; // Program sekmesi bugünün gününde açılsın
+    selectedMealDate = null;
+    renderDays();
     // Üye giriş yaptığında kendi ders hakkı/haftalık limit sayaçlarını gerçek kayıtlı verisinden yükle
     // (sessionsTotal/sessionsUsed/weeklyLimit demo değişkenleri, giriş yapan üyenin gerçek verisiyle senkron olmalı).
     const loginPkg = memberPackages[currentMemberName];
@@ -5391,6 +5646,7 @@
     customConfirm('Sözleşme sürümünü artırmak istediğine emin misin? Tüm üyeler bir sonraki girişte sözleşmeyi tekrar onaylamak zorunda kalacak.', (ok) => {
       if(!ok) return;
       CONTRACT_VERSION++;
+      appMeta.contractVersion = CONTRACT_VERSION;
       const versionEl = document.getElementById('contractVersionDisplay');
       if(versionEl) versionEl.textContent = CONTRACT_VERSION;
       alert(`Sözleşme sürümü v${CONTRACT_VERSION} oldu. Üyeler bir sonraki girişlerinde tekrar onaylayacak.`);
@@ -6226,11 +6482,13 @@
     const mine = announcements.filter(a => isAnnouncementForMe(a, currentMemberName) && !dismissedAnnouncements.has(a.id));
     // Bildirim merkezinde artık göstermediğimiz eski duyuruları temizle
     notificationCenterItems = notificationCenterItems.filter(n => !n.id.startsWith('announce-') || mine.some(a => 'announce-'+a.id === n.id));
-    mine.forEach(a => pushNotification('announce-'+a.id, '📢', a.message));
+    mine.forEach(a => pushNotification('announce-'+a.id, '📢', escapeHtml(a.message)));
+    saveMemberLocalState();
     renderNotificationCenter();
   }
   function dismissAnnouncement(id){
     dismissedAnnouncements.add(id);
+    dismissedNotificationIds.add('announce-' + id);
     renderMyAnnouncements();
   }
 
@@ -8280,27 +8538,84 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
   }
 
   renderDays(); renderClasses(); renderTrainers(); renderHomeUpcoming();
-  checkClassReminder();
-  checkClassConfirmation();
-  runAutoAttendance();
-  checkMealReminder();
-  checkMonthlyMealReset();
-  checkMotivationNotification();
-  checkWeeklySummary();
-  checkBirthdayNotification();
-  checkWaterReminder();
-  setInterval(checkClassReminder, 60000);
-  setInterval(checkClassConfirmation, 60000);
-  setInterval(runAutoAttendance, 60000);
+
+  // ---- Zamana bağlı kontroller ----
+  // Hepsi tek yerden, veriler buluttan yüklendikten SONRA çalışır (eskiden daha veri gelmeden,
+  // örnek verilerle çalışıp yanlış yoklama kaydı üretebiliyordu). Üyeye özel hatırlatmalar
+  // sadece bir üye giriş yapmışken çalışır.
+  let lastSeenDay = null;
+  function runTimeChecks(){
+    if(!cloudReady) return;
+    const now = getNow();
+    const todayStr = toLocalDateStr(now);
+    const dayChanged = lastSeenDay !== null && lastSeenDay !== todayStr;
+    lastSeenDay = todayStr;
+    try{
+      runAutoAttendance();
+      checkLeaderboardSeasonReset();
+      if(memberSessionActive){
+        checkClassReminder(); checkClassConfirmation(); checkMealReminder(); checkMonthlyMealReset();
+        checkMotivationNotification(); checkWeeklySummary(); checkBirthdayNotification();
+        checkWaterReminder(); checkMealSuggestion();
+      }
+    }catch(e){ console.error('Zaman kontrolü hatası:', e); }
+    // Gün değiştiyse (uygulama gece boyunca açık kaldıysa ya da ertesi gün arka plandan
+    // geri getirildiyse) ekrandaki tüm tarihler/günler yeni güne göre yenilensin.
+    if(dayChanged){
+      selectedDay = (now.getDay() + 6) % 7;
+      selectedMealDate = null;
+      calendarViewDate = null;
+      refreshAllViews();
+    }
+  }
+  setInterval(runTimeChecks, 60000);
   setInterval(renderSystemClock, 1000);
-  setInterval(checkMealReminder, 60000);
-  setInterval(checkMonthlyMealReset, 60000);
-  setInterval(checkMotivationNotification, 60000);
-  setInterval(checkWeeklySummary, 60000);
-  setInterval(checkBirthdayNotification, 60000);
-  setInterval(checkWaterReminder, 60000);
-  setInterval(checkMealSuggestion, 60000);
-  setInterval(checkLeaderboardSeasonReset, 60000);
+  document.addEventListener('visibilitychange', () => { if(!document.hidden) runTimeChecks(); });
+  window.addEventListener('focus', runTimeChecks);
+
+  // Başka cihazdan veri geldiğinde ya da gün değiştiğinde açık olan arayüzü (üye/yönetici) baştan çizer.
+  function refreshAllViews(){
+    const adminVisible = document.getElementById('admin-app').style.display === 'contents';
+    const memberVisible = document.getElementById('member-app').style.display === 'contents';
+    if(!adminVisible && !memberVisible) return;
+    const root = document.getElementById(adminVisible ? 'admin-app' : 'member-app');
+    // Yeniden çizim, formlarda seçilmiş/yazılmış değerleri sıfırlamasın
+    const saved = [];
+    root.querySelectorAll('select[id], input[id], textarea[id]').forEach(el => {
+      if(el.type === 'file') return;
+      const isCheck = el.type === 'checkbox' || el.type === 'radio';
+      saved.push([el.id, isCheck, isCheck ? el.checked : el.value]);
+    });
+    const safe = (fn) => { try{ fn(); }catch(e){ console.error('Yenileme hatası:', e); } };
+    if(adminVisible){
+      [renderPriceForm, renderConsumption, renderAdminAvailability, renderAdminMeals, renderProgramForm, renderAssignedPrograms,
+       renderEditMemberForm, renderAttendanceLog, renderMemberProfiles, renderMealReminderForm, renderAnalytics, renderAnnounceForm,
+       renderAnnounceHistory, renderProgressAdminMemberSelect, renderFinance, renderAdminHome, renderPendingCreditRequests,
+       renderPasswordResetRequests, renderAdminMessagesList, renderAdminMessageThread, updateAdminUnreadBadge].forEach(safe);
+    } else {
+      const pkg = memberPackages[currentMemberName];
+      sessionsTotal = pkg ? (pkg.unlimited ? 999 : pkg.size) : 0;
+      sessionsUsed = pkg ? (pkg.used || 0) : 0;
+      weeklyLimit = memberWeeklyLimits[currentMemberName] || weeklyLimit;
+      [renderDays, renderClasses, renderHomeUpcoming, renderMembership, renderTrainers, renderMyConsumption, renderProgressTracking,
+       renderBadges, renderLeaderboard, renderMyAnnouncements, renderPostureGallery, renderMemberMeasurements, renderDailyChecklist,
+       renderGoalNote, renderReferralCode, renderClassHistory, renderMonthlyCalendar, renderTrainerNote, renderFixedScheduleSummary,
+       renderMyContractStatus, renderHomePackageDates, renderMeals, renderMyMessageThread, renderNotificationCenter].forEach(safe);
+    }
+    saved.forEach(([id, isCheck, val]) => {
+      const el = document.getElementById(id);
+      if(!el) return;
+      if(isCheck) el.checked = val;
+      else if(el.tagName === 'SELECT'){ if([...el.options].some(o => o.value === val)) el.value = val; }
+      else if(dirtyInputIds.has(id) && val !== '' && el.value !== val) el.value = val;
+    });
+  }
+  // Kullanıcının elle yazmaya başladığı kutular (yeniden çizimde içerikleri korunur);
+  // bir butona basıldığında (form gönderildi/iptal edildi) liste temizlenir.
+  const dirtyInputIds = new Set();
+  document.addEventListener('input', (e) => { if(e.isTrusted && e.target && e.target.id) dirtyInputIds.add(e.target.id); }, true);
+  document.addEventListener('click', (e) => { if(e.target && e.target.closest && e.target.closest('button')) setTimeout(() => dirtyInputIds.clear(), 0); }, true);
+
   renderMeals(); renderMembership(); renderTrainerNote();
 
   // ---- Sağa kaydırarak geri gitme (kenardan başlayan swipe) ----
@@ -8473,14 +8788,13 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
   };
 </script>
   <script>
-    // PWA: Service worker şimdilik KAPALI — geliştirme sürecinde tarayıcının eski sürümü
-    // önbellekten göstermesine sebep oluyordu. Uygulama tamamlanınca tekrar açacağız.
-    // Daha önce kaydolmuş eski bir service worker varsa onu da kaldırıyoruz.
-    if('serviceWorker' in navigator){
-      navigator.serviceWorker.getRegistrations().then(regs => {
-        regs.forEach(reg => reg.unregister());
+    // PWA: Service worker — ana ekrana eklenebilme ve internet yokken açılabilme için.
+    // Sayfa her zaman ÖNCE internetten (en güncel sürüm) yüklenir; önbellek sadece çevrimdışıyken
+    // kullanılır, böylece eski sürümün takılı kalması sorunu yaşanmaz.
+    if('serviceWorker' in navigator && location.protocol === 'https:'){
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js').then(reg => reg.update()).catch(err => console.warn('Service worker kaydedilemedi:', err));
       });
-      if(window.caches){ caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
     }
   </script>
 </body>
