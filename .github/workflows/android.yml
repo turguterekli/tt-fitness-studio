@@ -1,0 +1,55 @@
+# Android paketini (test için APK + Play Store için AAB) GitHub'da otomatik üretir.
+# Çalıştırmak için: GitHub > Actions > "Android paketi" > Run workflow.
+# Üretilen dosyalar çalışmanın altındaki "Artifacts" bölümünden indirilir.
+name: Android paketi
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Bağımlılıkları kur ve web dosyalarını kopyala
+        run: |
+          npm ci
+          npm run build:www
+          npx cap sync android
+      - name: İmza anahtarını hazırla (varsa)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TTF_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "TTF_KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          else
+            echo "İmza anahtarı tanımlı değil; release paketi imzasız üretilecek."
+          fi
+      - name: Test APK'sı (telefona doğrudan kurulabilir)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Play Store paketi (AAB)
+        working-directory: android
+        env:
+          TTF_KEYSTORE_PASSWORD: ${{ secrets.TTF_KEYSTORE_PASSWORD }}
+          TTF_KEY_ALIAS: ${{ secrets.TTF_KEY_ALIAS }}
+          TTF_KEY_PASSWORD: ${{ secrets.TTF_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tt-fitness-android
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/bundle/release/app-release.aab

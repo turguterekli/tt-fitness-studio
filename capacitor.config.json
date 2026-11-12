@@ -1,0 +1,8 @@
+{
+  "appId": "com.ttfitness.studio",
+  "appName": "TT Fitness",
+  "webDir": "www",
+  "backgroundColor": "#15171B",
+  "android": { "backgroundColor": "#15171B" },
+  "ios": { "backgroundColor": "#15171B", "contentInset": "always" }
+}
