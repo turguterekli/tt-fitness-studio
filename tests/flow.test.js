@@ -109,6 +109,37 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.evaluate(() => logOut());
   await login(page, '0542 249 32 27', '1234');
   await page.evaluate(() => { skipOnboarding(); });
+  await page.waitForTimeout(1200);
+  // Hesap silme: üye kendi hesabını siler
+  const storeNow = () => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+  await page.evaluate(() => openSettings());
+  await page.click('#deleteAccountBtn');
+  await page.fill('#deleteAccountPassword', 'yanlis');
+  await page.click('#deleteAccountConfirmBtn');
+  check('account deletion needs correct password', (await page.textContent('#deleteAccountMsg')).includes('hatalı'));
+  await page.fill('#deleteAccountPassword', '1234');
+  await page.click('#deleteAccountConfirmBtn');
+  await page.waitForTimeout(2500);
+  check('after deletion: back at login screen', await page.isVisible('#logged-out-screen'));
+  let st = await storeNow();
+  const leftovers = Object.entries(st).filter(([k, v]) => JSON.stringify(v).includes('Mert Aydın') && !k.startsWith('trainers/')).map(([k]) => k);
+  check('deleted member: no data left in cloud', leftovers.length === 0, leftovers.join(','));
+  check('deleted member: member doc removed', !Object.keys(st).some(k => k.startsWith('members/') && st[k].name === 'Mert Aydın'));
+  check('deleted member: photo file deleted from storage', await page.evaluate(() => (window.__deletedFiles || []).includes('https://example.invalid/p.jpg')));
+  await login(page, '0542 249 32 27', '1234');
+  check('deleted member cannot log in', (await page.textContent('#loginError')).includes('bulunamadı'));
+  await page.reload(); await page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
+  await page.waitForTimeout(1500);
+  st = await storeNow();
+  check('deleted member data does not come back after reload', !Object.entries(st).some(([k, v]) => !k.startsWith('trainers/') && JSON.stringify(v).includes('Mert Aydın')));
+  // Yönetici bir üyeyi siler
+  await login(page, 'admin1', 'tt2026');
+  await page.evaluate(() => adminDeleteMember('Deneme Üye'));
+  await page.evaluate(() => closeCustomConfirm(true));
+  await page.waitForTimeout(2000);
+  st = await storeNow();
+  check('admin can delete a member', !Object.entries(st).some(([k, v]) => JSON.stringify(v).includes('Deneme Üye')));
+  check('other members untouched', Object.keys(st).filter(k => k.startsWith('members/')).length === 4);
   // 10. stored doc size sanity
   const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(JSON.parse(localStorage.getItem('__fakeStore'))).map(([k,v])=>[k, JSON.stringify(v).length])));
   check('all docs under 1MB', Math.max(...Object.values(sizes)) < 1048576, 'largest doc '+Math.max(...Object.values(sizes))+' bytes, docs '+Object.keys(sizes).length);

@@ -59,6 +59,9 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   check('day chips show real dates of this week', chips.join(',') === '9,10,11,12,13,14,15', chips.join(','));
   check('today (Wed) is selected', await B.page.$eval('#dayRow .day-chip.active .d', e => e.textContent) === 'ÇAR');
 
+  // Sıradaki ders: Çarşamba öğlen, tek ders Pazartesi 10:00 → gelecek Pazartesi (16.11) gösterilmeli
+  const nextTxt = await B.page.textContent('#nextClassBody');
+  check('next class shows the upcoming occurrence', nextTxt.includes('PZT 16.11'), nextTxt.replace(/\s+/g, ' ').slice(0, 80));
   // ---- Otomatik yoklama: Pazartesi 10:00 dersi geçmiş, iki cihaz açık → sadece 1 kez düşmeli ----
   s = await store(A.page);
   const logKeys = Object.keys(field(s, 'attendanceLog') || {});
