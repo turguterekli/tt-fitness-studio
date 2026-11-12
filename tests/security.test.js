@@ -13,10 +13,24 @@ const XSS = '"><img src=x onerror="window.__pwn=(window.__pwn||0)+1;window.__pwn
 const memberDoc = (s, name) => Object.values(Object.fromEntries(Object.entries(s).filter(([k]) => k.startsWith('members/')))).find(m => m.name === name);
 
 (async () => {
-  const { browser, ctx } = await newContext({});
+  // Eski düzenden kalan, içinde özel karakter olan açık metin şifreli bir üye
+  const LEGACY_PW = 'a"b<c>1&x';
+  const seed = { 'members/eski': { name: 'Eski Üye', phone: '0533 000 00 09', password: LEGACY_PW, role: 'member', status: 'active', joinDate: '2026-01-01' },
+    'members/adm': { name: 'Turgut Terekli', phone: 'admin1', password: 'tt2026', role: 'admin', adminScope: 'full', trainerScope: null, status: 'active' },
+    'members/adm2': { name: 'Seray Atagan', phone: 'admin2', password: 'tt2026', role: 'admin', adminScope: 'own', trainerScope: 'Seray Atagan', status: 'active' },
+    'members/m1': { name: 'Mert Aydın', phone: '0542 249 32 27', password: '1234', role: 'member', status: 'active', joinDate: '2025-11-01' },
+    'members/m2': { name: 'Elif Kara', phone: '0532 111 22 33', password: '1234', role: 'member', status: 'active', joinDate: '2026-08-01' } };
+  const { browser, ctx } = await newContext({ seed });
   const { page } = await openPage(ctx, {});
   const reload = async () => { await page.reload(); await ready(page); await wait(page, 300); };
 
+  await wait(page, 2500); // açılıştaki otomatik kayıtlar
+  check('1.0 old plain password with special characters is not altered before migration', (await store(page))['members/eski'].password === LEGACY_PW);
+  await login(page, '0533 000 00 09', LEGACY_PW, null);
+  check('1.0b member with such an old password can still log in', await page.isVisible('#member-app'));
+  await page.evaluate(() => flushAllAutosaves()); await wait(page, 1500);
+  check('1.0c and it is converted to a hash on that login', !('password' in (await store(page))['members/eski']) && !!(await store(page))['members/eski'].pw);
+  await page.evaluate(() => logOut());
   // ================= 1) Şifre saklama =================
   await login(page, 'admin1', 'tt2026');
   await page.evaluate(() => { openAddMemberScreen(); });

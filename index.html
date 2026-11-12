@@ -1917,6 +1917,7 @@
       }
     } else if(value && typeof value === 'object'){
       Object.keys(value).forEach(k => {
+        if(k === 'password') return; // eski açık metin şifreye dokunma (girişte özetlenecek)
         if(typeof value[k] === 'string') value[k] = neutralizeText(value[k]); else neutralizeDeepInPlace(value[k]);
       });
     }
@@ -2119,7 +2120,8 @@
     const synced = new Map(); // belge id -> { alan: kanonik metin }
     function fieldsOf(obj){
       const out = {};
-      Object.keys(obj).forEach(k => { if(k !== '_id' && obj[k] !== undefined) out[k] = canonForCloud(obj[k]); });
+      // 'password' (henüz özetlenmemiş eski şifre) süzgeçten geçirilmez, olduğu gibi karşılaştırılır
+      Object.keys(obj).forEach(k => { if(k !== '_id' && obj[k] !== undefined) out[k] = k === 'password' ? JSON.stringify(obj[k]) : canonForCloud(obj[k]); });
       return out;
     }
     function markSynced(item){ if(item._id) synced.set(item._id, fieldsOf(item)); }
@@ -2134,6 +2136,7 @@
       Object.keys(data || {}).forEach(k => { remote[k] = stableStringify(data[k]); });
       if(idx === -1){
         const item = { ...desanitizeFromFirestore(data || {}), _id: id };
+        if(data && typeof data.password === 'string') item.password = data.password;
         arr.push(withDefaults ? withDefaults(item) : item);
         synced.set(id, remote);
         return true;
@@ -2145,7 +2148,7 @@
         if(remote[k] === prev[k]) return;
         const lJson = (k in item && item[k] !== undefined) ? canonForCloud(item[k]) : undefined;
         if(lJson === prev[k] && lJson !== remote[k]){
-          if(remote[k] === undefined) delete item[k]; else item[k] = desanitizeFromFirestore(data[k]);
+          if(remote[k] === undefined) delete item[k]; else item[k] = k === 'password' ? data[k] : desanitizeFromFirestore(data[k]);
           changed = true;
         }
       });
@@ -2162,6 +2165,7 @@
           item._id = ref.id;
           const data = sanitizeForFirestore({ ...item });
           delete data._id;
+          if(typeof item.password === 'string') data.password = item.password;
           batch.set(ref, data);
           synced.set(item._id, fieldsOf(item));
           count++;
@@ -2170,7 +2174,7 @@
         const now = fieldsOf(item);
         const prev = synced.get(item._id) || {};
         const payload = {};
-        Object.keys(now).forEach(k => { if(now[k] !== prev[k]) payload[k] = sanitizeForFirestore(item[k]); });
+        Object.keys(now).forEach(k => { if(now[k] !== prev[k]) payload[k] = k === 'password' ? item[k] : sanitizeForFirestore(item[k]); });
         Object.keys(prev).forEach(k => { if(!(k in now)) payload[k] = firebase.firestore.FieldValue.delete(); });
         if(Object.keys(payload).length){
           batch.set(db.collection(collectionName).doc(item._id), payload, { merge: true });
