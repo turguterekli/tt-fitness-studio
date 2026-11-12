@@ -7,7 +7,7 @@ async function newContext(opts={}){
   const ctx = await browser.newContext({ viewport:{width:390,height:844}, ...(opts.ctx||{}) });
   await ctx.route('**/*', async route => {
     const u = new URL(route.request().url());
-    if(u.hostname==='app.test'){
+    if(u.hostname==='localhost'){
       // Gerçek Firebase SDK yerine sahte olanı ver (opts.realSdk ile kapatılabilir)
       if(!opts.realSdk && /\/vendor\/firebase-.*-compat\.js$/.test(u.pathname)) return route.fulfill({ status:200, contentType:'application/javascript', body: u.pathname.includes('firebase-app-compat') ? FAKE : '' });
       const f = path.join(REPO, decodeURIComponent(u.pathname));
@@ -37,7 +37,7 @@ async function openPage(ctx, opts={}){
   page.on('console', m => { if(m.type()==='error') errors.push('CONSOLE: '+m.text()); });
   page.on('dialog', async d => { (page.__dialogs ||= []).push(d.type()+': '+d.message()); if(d.type()==='prompt') await d.accept(page.__promptAnswer||''); else await d.accept(); });
   if(opts.time) await page.clock.install({ time: new Date(opts.time) });
-  await page.goto('http://app.test/index.html');
+  await page.goto('http://localhost/index.html');
   await page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none', null, {timeout:15000});
   return { page, errors };
 }
@@ -46,9 +46,17 @@ async function open(opts={}){
   const { page, errors } = await openPage(ctx, opts);
   return { browser, ctx, page, errors };
 }
-async function login(page, user, pass){
+// Giriş yapar. Yönetimin verdiği kodla ilk kez giren üyeden yeni şifre istenirse onu da belirler
+// (varsayılan yeni şifre: NEW_PASSWORD) — sonraki girişlerde bu şifre kullanılmalıdır.
+const NEW_PASSWORD = 'Sifre123';
+async function login(page, user, pass, newPass = NEW_PASSWORD){
   await page.fill('#loginPhoneInput', user); await page.fill('#loginPasswordInput', pass);
   try{ await page.evaluate(() => loginMember()); }catch(e){ console.log('LOGIN THROW', e.message.split('\n').slice(0,3).join(' | ')); }
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(300);
+  if(newPass && await page.isVisible('#forcedPasswordOverlay')){
+    await page.fill('#forcedPassword1', newPass); await page.fill('#forcedPassword2', newPass);
+    await page.evaluate(() => saveForcedPassword());
+    await page.waitForTimeout(200);
+  }
 }
-module.exports = { open, login, newContext, openPage };
+module.exports = { open, login, newContext, openPage, NEW_PASSWORD };

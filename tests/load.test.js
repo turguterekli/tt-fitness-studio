@@ -190,10 +190,10 @@ const daysOf = i => [i % 7, (i + 2) % 7, (i + 4) % 7];
   await C.page.evaluate(() => openAdminSubScreen('attendancelog'));
   check('admin attendance screen lists members', (await C.page.textContent('#attendanceLogList')).includes('Üye 01 Test'));
   await C.page.evaluate(() => logOut());
-  await login(C.page, phones[3].replace(/\s/g, ''), codes[3]);
+  await login(C.page, phones[3].replace(/\s/g, ''), 'Sifre123');
   await C.page.evaluate(() => skipOnboarding());
   check('member sees remaining sessions after a week', await C.page.evaluate(n => sessionsUsed === memberPackages[n].used && sessionsUsed > 0, names[3]));
-  check('member login with activation code still works as password', await C.page.isVisible('#member-app'));
+  check('member logs in with the password they chose', await C.page.isVisible('#member-app'));
   check('no JS errors (later session)', clean(C.errors).length === 0, clean(C.errors).slice(0, 3).join(' | '));
 
   console.log(results.join('\n'));

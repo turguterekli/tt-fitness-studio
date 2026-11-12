@@ -5,9 +5,9 @@ const { newContext } = require('./lib');
   const { browser, ctx } = await newContext({ realSdk: true });
   const page = await ctx.newPage();
   const external = [], pageErrors = [];
-  page.on('request', r => { const h = new URL(r.url()).hostname; if(h !== 'app.test') external.push(h); });
+  page.on('request', r => { const h = new URL(r.url()).hostname; if(h !== 'localhost') external.push(h); });
   page.on('pageerror', e => pageErrors.push(e.message));
-  await page.goto('http://app.test/index.html');
+  await page.goto('http://localhost/index.html');
   await page.waitForTimeout(4000);
   const info = await page.evaluate(async () => ({
     sdk: typeof firebase !== 'undefined' && firebase.SDK_VERSION,

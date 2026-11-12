@@ -14,7 +14,7 @@ Spor salonu üyelik uygulaması. Arayüz ve yorumlar Türkçe; kullanıcıyla T�
 ## index.html içindeki ana bölümler (grep ile bul)
 - `BULUT EŞİTLEME` — `createDocSync`, `createCollectionSync`, `initFirebaseAndLoadData`, `stateRefs`
 - `runTimeChecks`, `runAutoAttendance`, `claimAttendanceBatch` — tarihe bağlı işler, yoklama
-- `loginMember`, `completeLogin`, `logOut`, `deleteMemberCompletely`
+- `loginMember`, `completeLogin`, `logOut`, `deleteMemberCompletely`, `saveForcedPassword`, `tryAutoLogin`
 - `refreshAllViews` — başka cihazdan veri gelince / gün değişince ekranı yeniler
 - Üye ekranları `#view-*`, yönetici ekranları `#admin-view-*`
 
@@ -22,12 +22,14 @@ Spor salonu üyelik uygulaması. Arayüz ve yorumlar Türkçe; kullanıcıyla T�
 - Firestore: `members/*`, `trainers/*`, `app_data/memberPackages`, `app_data/state_<alan>`.
   Kurallar izin vermezse eski tek belge `app_data/appState` kullanılır (`legacyStorageMode`).
 - Yeni kalıcı veri eklerken `stateRefs` listesine ekle; değişkeni yeniden ATAMA (`x = ...`), yerinde değiştir.
-- Kullanıcı metnini HTML'e basarken `escapeHtml()` kullan.
-- Bilinen açık: şifreler Firestore'da açık metin (bkz. `store/GUVENLIK-PLANI.md`).
+- Kullanıcı metnini HTML'e basarken `escapeHtml()` kullan. Ayrıca tüm metinler buluta yazılırken/okunurken `neutralizeText()` ile süzülür; isimler için `safeName()`.
+- Şifre: `setMemberPassword` / `verifyMemberPassword` (PBKDF2 özeti, `member.pw`); açık metin `member.password` YAZMA.
+- Bilinen açık: veritabanı kuralları kişiye göre kısıtlamıyor (bkz. `store/GUVENLIK-PLANI.md`).
 
 ## Test (her değişiklikten sonra)
 ```bash
-cd tests && npm install && npm test     # akış + eşitleme (2 mod) + vendor
+cd tests && npm install && npm test     # akış + eşitleme (2 mod) + vendor + güvenlik
+npm run load                             # 50 üyelik yük testi
 npm run smoke                            # tüm butonlar, 3 rol
 ```
 Canlı Firebase'e bağlanan test/komut ÇALIŞTIRMA.

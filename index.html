@@ -1830,6 +1830,16 @@
     </div>
   </div>
 
+  <div id="forcedPasswordOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.92); z-index:90; align-items:center; justify-content:center; padding:24px;">
+    <div class="card" style="width:100%;">
+      <div style="font-family:var(--font-display); font-size:17px; font-weight:600; margin-bottom:8px;">Kendi şifreni belirle</div>
+      <div style="font-size:12.5px; color:var(--muted); line-height:1.6; margin-bottom:14px;">Güvenliğin için, salon yönetiminin verdiği kod yerine yalnızca senin bildiğin bir şifre belirlemen gerekiyor (en az 6 karakter).</div>
+      <div class="auth-field"><span class="auth-icon">🔑</span><input type="password" id="forcedPassword1" class="auth-input" placeholder="Yeni şifre" autocomplete="new-password"></div>
+      <div class="auth-field" style="margin-bottom:12px;"><span class="auth-icon">🔑</span><input type="password" id="forcedPassword2" class="auth-input" placeholder="Yeni şifre (tekrar)" autocomplete="new-password" onkeydown="if(event.key==='Enter') saveForcedPassword()"></div>
+      <button class="btn btn-brass btn-full" id="forcedPasswordBtn" onclick="saveForcedPassword()">Kaydet ve Devam Et</button>
+      <div id="forcedPasswordMsg" style="font-size:11.5px; color:#e2664e; margin-top:8px; text-align:center;"></div>
+    </div>
+  </div>
   <div id="forgotPasswordOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:80; align-items:center; justify-content:center; padding:24px;">
     <div class="card" style="width:100%;">
       <div class="card-label">ŞİFREMİ UNUTTUM</div>
@@ -1886,7 +1896,39 @@
   // (örn. antrenman sıralaması gibi "dizi içinde dizi" yapılar). Buluta yazmadan önce
   // bu iç dizileri { __arr: [...] } şeklinde sarıp güvenli hale getiriyoruz,
   // okurken de aynı şekilde geri açıyoruz. Bu sayede hangi veri olursa olsun kayıt bozulmuyor.
+  // ---- Zararlı içerik süzgeci ----
+  // Uygulamadaki pek çok ekran veriyi doğrudan HTML olarak basıyor. Tek tek her ekranı korumak
+  // yerine, veri buluta YAZILIRKEN ve buluttan OKUNURKEN tek noktada süzülür: metinlerdeki
+  // < > " karakterleri zararsız görsel eşleriyle (‹ › ″) değiştirilir. Böylece bir üyenin
+  // (ya da giriş yapmamış birinin "şifremi unuttum" kutusuna) yazdığı metin, başka bir cihazda
+  // hiçbir ekranda kod olarak çalışamaz.
+  function neutralizeText(str){
+    return (str.indexOf('<') === -1 && str.indexOf('>') === -1 && str.indexOf('"') === -1) ? str
+      : str.replace(/</g, '‹').replace(/>/g, '›').replace(/"/g, '″');
+  }
+  // İsim gibi, buton komutlarının içine de yazılan metinler için: tırnak ve ters bölü de çıkarılır
+  function safeName(str){
+    return neutralizeText(String(str == null ? '' : str)).replace(/['`\\″]/g, '').replace(/\s+/g, ' ').trim();
+  }
+  function neutralizeDeepInPlace(value){
+    if(Array.isArray(value)){
+      for(let i = 0; i < value.length; i++){
+        if(typeof value[i] === 'string') value[i] = neutralizeText(value[i]); else neutralizeDeepInPlace(value[i]);
+      }
+    } else if(value && typeof value === 'object'){
+      Object.keys(value).forEach(k => {
+        if(typeof value[k] === 'string') value[k] = neutralizeText(value[k]); else neutralizeDeepInPlace(value[k]);
+      });
+    }
+  }
+  // Bellekteki tüm veriyi süzer (aynı cihazda bir kullanıcı çıkıp başkası girdiğinde çağrılır)
+  function neutralizeAllState(){
+    allStateRefs.forEach(([ref]) => neutralizeDeepInPlace(ref));
+    neutralizeDeepInPlace(members); neutralizeDeepInPlace(trainers); neutralizeDeepInPlace(memberPackages);
+  }
+
   function sanitizeForFirestore(value){
+    if(typeof value === 'string') return neutralizeText(value);
     if(value instanceof Date){
       return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
     }
@@ -1900,6 +1942,7 @@
     return value;
   }
   function desanitizeFromFirestore(value){
+    if(typeof value === 'string') return neutralizeText(value);
     if(Array.isArray(value)){
       return value.map(v => (v && typeof v === 'object' && '__arr' in v) ? desanitizeFromFirestore(v.__arr) : desanitizeFromFirestore(v));
     } else if(value && typeof value === 'object'){
@@ -2255,6 +2298,7 @@
         [memberTrainerNotes, 'memberTrainerNotes', 'object'],
         [consentRecords, 'consentRecords', 'object'],
         [loginLog, 'loginLog', 'object'],
+        [loginLocks, 'loginLocks', 'object'],
         [appMeta, 'appMeta', 'object'],
         [mealResetMonth, 'mealResetMonth', 'object'],
       ];
@@ -2355,7 +2399,7 @@
         if(changed) scheduleRemoteRefresh();
       }, err => console.error('Canlı eşitleme (antrenörler) hatası:', err));
 
-      tryAutoLogin();
+      await tryAutoLogin();
       hideCloudLoading();
       runTimeChecks();
     }catch(err){
@@ -2384,6 +2428,7 @@
   // { contractVersion, leaderboardSeasonStart, attendanceCheckedUntil }
   let appMeta = {};
   let mealResetMonth = {}; // { memberName: 'YYYY-AA' } — öğün kayıtlarının en son hangi ay için sıfırlandığı
+  let currentAdminName = null; // giriş yapmış yöneticinin adı
   let memberSessionActive = false; // şu an bu cihazda bir ÜYE mi giriş yapmış (yönetici/çıkış durumunda false)
   function applyAppMeta(){
     if(typeof appMeta.contractVersion === 'number') CONTRACT_VERSION = appMeta.contractVersion;
@@ -5048,6 +5093,8 @@
   }
   function logOut(){
     memberSessionActive = false;
+    currentAdminName = null;
+    document.getElementById('forcedPasswordOverlay').style.display = 'none';
     try{ localStorage.removeItem('ttf_session'); }catch(e){}
     document.getElementById('member-app').style.display = 'none';
     document.getElementById('admin-app').style.display = 'none';
@@ -5074,7 +5121,13 @@
     const phone = document.getElementById('forgotPhoneInput').value.trim();
     if(!phone){ alert('Lütfen telefon numaranı gir.'); return; }
     const code = String(Math.floor(100000 + Math.random()*900000));
-    passwordResetRequests.push({ phone, date: toLocalDateStr(getNow()), code });
+    // Aynı numara için tek istek tutulur ve liste en fazla 50 kayıtla sınırlıdır
+    // (biri art arda istek göndererek kaydı şişiremesin).
+    for(let i = passwordResetRequests.length - 1; i >= 0; i--){
+      if(normalizePhone(passwordResetRequests[i].phone) === normalizePhone(phone)) passwordResetRequests.splice(i, 1);
+    }
+    passwordResetRequests.push({ phone: phone.slice(0, 30), date: toLocalDateStr(getNow()), code });
+    while(passwordResetRequests.length > 50) passwordResetRequests.shift();
     document.getElementById('forgotPasswordForm').style.display = 'none';
     document.getElementById('forgotPasswordSuccess').style.display = 'block';
     if(typeof renderPasswordResetRequests === 'function') renderPasswordResetRequests();
@@ -5125,7 +5178,65 @@
       </div>`).join('') : '<div class="meal-empty">Henüz kayıt yok.</div>';
   }
 
-  function loginMember(){
+  // ---- Şifre saklama ----
+  // Şifreler artık veritabanında AÇIK METİN durmaz: her şifre rastgele bir "tuz" ile birlikte
+  // PBKDF2 (SHA-256, 150.000 tur) ile özetlenir ve yalnızca bu özet saklanır ({ s: tuz, i: tur, h: özet }).
+  // Eski (açık metin) şifreler, üye bir sonraki başarılı girişinde otomatik olarak özetlenir.
+  const PW_ITERATIONS = 150000;
+  const canHashPasswords = () => !!(window.crypto && window.crypto.subtle);
+  const bytesToHex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const hexToBytes = (hex) => new Uint8Array((hex.match(/.{2}/g) || []).map(h => parseInt(h, 16)));
+  async function derivePasswordHash(plain, saltHex, iterations){
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(plain), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: hexToBytes(saltHex), iterations }, key, 256);
+    return bytesToHex(bits);
+  }
+  async function setMemberPassword(member, plain){
+    if(!canHashPasswords()){ member.password = plain; return; } // güvenli olmayan (http) ortam: eski davranış
+    const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
+    member.pw = { s: salt, i: PW_ITERATIONS, h: await derivePasswordHash(plain, salt, PW_ITERATIONS) };
+    delete member.password;
+  }
+  async function verifyMemberPassword(member, plain){
+    if(!member || typeof plain !== 'string' || !plain) return false;
+    if(member.pw && member.pw.h){
+      if(!canHashPasswords()) return false;
+      return (await derivePasswordHash(plain, member.pw.s, member.pw.i || PW_ITERATIONS)) === member.pw.h;
+    }
+    return typeof member.password === 'string' && member.password === plain;
+  }
+  // "Beni hatırla" oturumu: eskiden cihazda sadece telefon numarası saklanıyordu ve numarayı
+  // değiştiren başka hesaba (yönetici dahil) girebiliyordu. Artık şifre özetinden türetilen bir
+  // anahtar da saklanıyor; anahtar tutmuyorsa (ya da şifre değiştiyse) yeniden şifre istenir.
+  async function sessionTokenFor(member){
+    if(!member || !member.pw || !member.pw.h || !canHashPasswords()) return null;
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(member.pw.h + '|oturum|' + normalizePhone(member.phone)));
+    return bytesToHex(digest).slice(0, 40);
+  }
+  async function saveSession(member){
+    try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: member.phone, t: await sessionTokenFor(member) })); }catch(e){}
+  }
+  const MIN_PASSWORD_LENGTH = 6;
+
+  // Hesap bazlı kilit (bulutta): aynı hesaba art arda 5 hatalı denemeden sonra o hesap HER cihazdan
+  // 5 dakika kilitlenir — cihazdaki kaydı silmek ya da başka cihaza geçmek kilidi aşmaz.
+  let loginLocks = {}; // { telefon: { count, until } }
+  const accountLockKey = (member) => normalizePhone(member.phone) || '_';
+  function accountLockMinutes(member){
+    const l = loginLocks[accountLockKey(member)];
+    return l && l.until && l.until > Date.now() ? Math.ceil((l.until - Date.now()) / 60000) : 0;
+  }
+  function noteAccountFailure(member){
+    const key = accountLockKey(member);
+    const prev = loginLocks[key] || {};
+    const count = (prev.until && prev.until <= Date.now() ? 0 : (prev.count || 0)) + 1;
+    const next = { count };
+    if(count >= LOGIN_MAX_FAILS){ next.until = Date.now() + LOGIN_LOCK_MS; next.count = 0; }
+    loginLocks[key] = next;
+    return next;
+  }
+
+  async function loginMember(){
     const phone = document.getElementById('loginPhoneInput').value.trim();
     const password = document.getElementById('loginPasswordInput').value;
     const errorEl = document.getElementById('loginError');
@@ -5141,46 +5252,92 @@
     }
     const found = members.find(m => normalizePhone(m.phone) === normalizePhone(phone));
     if(!found){
-      errorEl.textContent = 'Bu telefon numarasıyla kayıtlı bir üyelik bulunamadı.';
+      // Numaranın kayıtlı olup olmadığı dışarıdan anlaşılmasın diye "şifre hatalı" ile aynı mesaj
+      errorEl.textContent = 'Telefon numarası veya şifre hatalı.';
       recordLoginAttempt(maskLoginId(phone), false, 'kayıtlı değil');
       noteLoginFailure();
       return;
     }
-    if(found.status === 'pending'){
-      // Üye, admin'in kendisine verdiği aktivasyon kodunu şifre olarak girdiyse hesabı burada
-      // otomatik aktive ediyoruz — önceden bu adım admin panelinde elle onay gerektiriyordu ve
-      // üye doğru kodu girse bile "hesap aktif değil" mesajı değişmiyordu.
-      if(found.activationCode && password === found.activationCode){
-        found.status = 'active';
-        if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
-      } else {
-        errorEl.textContent = 'Hesabın henüz aktif değil. Salon yönetiminden aldığın kodu şifre olarak girerek aktive edebilirsin.';
-        recordLoginAttempt(found.name, false, 'aktivasyon kodu hatalı');
-        noteLoginFailure();
-        return;
-      }
-    } else if(found.password !== password){
-      errorEl.textContent = 'Şifre hatalı. Tekrar dene.';
-      recordLoginAttempt(found.name, false, 'şifre hatalı');
-      if(noteLoginFailure().until) errorEl.textContent = 'Çok fazla hatalı deneme yapıldı. Lütfen 5 dakika sonra tekrar dene.';
+    const lockedMins = accountLockMinutes(found);
+    if(lockedMins){
+      errorEl.textContent = `Bu hesap çok fazla hatalı deneme nedeniyle geçici olarak kilitlendi. Lütfen ${lockedMins} dakika sonra tekrar dene.`;
+      recordLoginAttempt(found.name, false, 'hesap kilitli');
       return;
     }
+    const fail = (message, reason) => {
+      errorEl.textContent = message;
+      recordLoginAttempt(found.name, false, reason);
+      const deviceLock = noteLoginFailure();
+      const accountLock = noteAccountFailure(found);
+      if(deviceLock.until || accountLock.until) errorEl.textContent = 'Çok fazla hatalı deneme yapıldı. Lütfen 5 dakika sonra tekrar dene.';
+      if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+    };
+    if(found.status === 'pending'){
+      // Üye, admin'in kendisine verdiği aktivasyon kodunu şifre olarak girdiyse hesabı burada
+      // otomatik aktive ediyoruz. Kod yöneticinin bildiği 6 haneli bir sayı olduğu için,
+      // üyeden hemen ardından kendi şifresini belirlemesi istenir.
+      if(found.activationCode && password === found.activationCode){
+        found.status = 'active';
+        found.mustSetPassword = true;
+      } else {
+        fail('Hesabın henüz aktif değil. Salon yönetiminden aldığın kodu şifre olarak girerek aktive edebilirsin.', 'aktivasyon kodu hatalı');
+        return;
+      }
+    } else {
+      if(!(await verifyMemberPassword(found, password))){
+        fail('Telefon numarası veya şifre hatalı.', 'şifre hatalı');
+        return;
+      }
+      // Şifresi hâlâ yönetimin verdiği kodsa kendi şifresini belirlemesi istenir
+      if(found.role !== 'admin' && found.activationCode && password === found.activationCode) found.mustSetPassword = true;
+      // Eski açık metin şifreyi özetleyerek sakla
+      if(!found.pw && canHashPasswords()) await setMemberPassword(found, password);
+    }
     try{ localStorage.removeItem('ttf_login_fail'); }catch(e){}
+    delete loginLocks[accountLockKey(found)];
     recordLoginAttempt(found.name, true, found.role === 'admin' ? 'yönetici' : '');
+    await saveSession(found);
     completeLogin(found);
     runTimeChecks();
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  }
+
+  // Yönetimin verdiği kodla/şifreyle giren üye, devam etmeden önce kendi şifresini belirler
+  function showForcedPasswordOverlay(){
+    document.getElementById('forcedPasswordOverlay').style.display = 'flex';
+    document.getElementById('forcedPassword1').value = '';
+    document.getElementById('forcedPassword2').value = '';
+    document.getElementById('forcedPasswordMsg').textContent = '';
+  }
+  async function saveForcedPassword(){
+    const me = members.find(m => m.name === currentMemberName);
+    const p1 = document.getElementById('forcedPassword1').value;
+    const p2 = document.getElementById('forcedPassword2').value;
+    const msgEl = document.getElementById('forcedPasswordMsg');
+    if(!me) return;
+    if(p1.length < MIN_PASSWORD_LENGTH){ msgEl.textContent = `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`; return; }
+    if(p1 !== p2){ msgEl.textContent = 'Şifreler birbiriyle uyuşmuyor.'; return; }
+    if(p1 === me.activationCode || await verifyMemberPassword(me, p1)){ msgEl.textContent = 'Yeni şifren, sana verilen koddan/şifreden farklı olmalı.'; return; }
+    await setMemberPassword(me, p1);
+    delete me.mustSetPassword;
+    delete me.activationCode;
+    await saveSession(me);
+    document.getElementById('forcedPasswordOverlay').style.display = 'none';
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
   }
 
   // "Beni hatırla": şifre doğrulaması bittikten sonra oturumu bu cihazda saklar,
   // bir dahaki açılışta tekrar şifre sormadan doğrudan içeri alır.
   function completeLogin(found){
     document.getElementById('logged-out-screen').style.display = 'none';
-    try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: found.phone })); }catch(e){}
+    document.getElementById('forcedPasswordOverlay').style.display = 'none';
+    neutralizeAllState();
 
     if(found.role === 'admin'){
       // Aynı giriş ekranı — sadece hesabın rolüne göre farklı arayüz açılıyor
       adminTrainerScope = found.adminScope === 'own' ? found.trainerScope : null;
       memberSessionActive = false;
+      currentAdminName = found.name;
       document.getElementById('member-app').style.display = 'none';
       document.getElementById('admin-app').style.display = 'contents';
       renderPriceForm(); renderConsumption(); renderAdminAvailability(); renderAdminMeals(); renderProgramForm(); renderAssignedPrograms(); renderEditMemberForm(); renderAttendanceLog(); renderMemberProfiles(); renderSystemClock(); initSystemClockInput(); renderMealReminderForm(); renderAnalytics(); renderAnnounceForm(); renderProgressAdminMemberSelect(); setFinanceType('income'); renderFinance(); toggleFinanceTabVisibility(); renderAdminHome(); checkAdminBirthdayAlert();
@@ -5190,6 +5347,8 @@
     }
 
     currentMemberName = found.name;
+    currentAdminName = null;
+    if(found.mustSetPassword) showForcedPasswordOverlay();
     memberSessionActive = true;
     loadMemberLocalState();
     selectedDay = (getNow().getDay() + 6) % 7; // Program sekmesi bugünün gününde açılsın
@@ -5219,13 +5378,18 @@
   }
 
   // Sayfa açılışında daha önce kaydedilmiş bir oturum var mı diye bakar; varsa şifre sormadan girer.
-  function tryAutoLogin(){
+  async function tryAutoLogin(){
     try{
       const raw = localStorage.getItem('ttf_session');
       if(!raw) return false;
       const saved = JSON.parse(raw);
       const found = members.find(m => normalizePhone(m.phone) === normalizePhone(saved.phone));
       if(!found || found.status === 'pending') return false;
+      if(canHashPasswords()){
+        // Cihazdaki oturum anahtarı, hesabın şifre özetinden türetilenle aynı olmalı
+        const expected = await sessionTokenFor(found);
+        if(!expected || saved.t !== expected){ localStorage.removeItem('ttf_session'); return false; }
+      }
       completeLogin(found);
       return true;
     }catch(e){ return false; }
@@ -5300,7 +5464,7 @@
     const phone = document.getElementById('settingsPhone').value.trim();
     const birthday = document.getElementById('settingsBirthday').value;
     const profile = getMemberProfile(currentMemberName);
-    if(newName) profile.name = newName;
+    if(newName) profile.name = safeName(newName);
     profile.age = age ? parseInt(age, 10) : null;
     profile.gender = gender;
     profile.phone = phone;
@@ -5313,7 +5477,7 @@
       if(meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
         meObj.phone = phone;
         phoneChanged = true;
-        try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: meObj.phone })); }catch(e){}
+        saveSession(meObj);
       }
     }
     updateAvatarDisplays();
@@ -5383,7 +5547,7 @@
     const me = members.find(m => m.name === currentMemberName);
     const msgEl = document.getElementById('deleteAccountMsg');
     if(!me || me.role === 'admin') return;
-    if(document.getElementById('deleteAccountPassword').value !== me.password){ msgEl.textContent = 'Şifre hatalı.'; return; }
+    if(!(await verifyMemberPassword(me, document.getElementById('deleteAccountPassword').value))){ msgEl.textContent = 'Şifre hatalı.'; return; }
     const btn = document.getElementById('deleteAccountConfirmBtn');
     btn.disabled = true; btn.textContent = 'Siliniyor…';
     try{
@@ -5411,7 +5575,7 @@
     });
   }
 
-  function changePassword(){
+  async function changePassword(){
     const current = document.getElementById('currentPasswordInput').value;
     const next = document.getElementById('newPasswordInput').value;
     const confirmPw = document.getElementById('confirmPasswordInput').value;
@@ -5424,14 +5588,14 @@
       msgEl.textContent = 'Lütfen tüm alanları doldur.';
       return;
     }
-    if(current !== me.password){
+    if(!(await verifyMemberPassword(me, current))){
       msgEl.style.color = '#e2664e';
       msgEl.textContent = 'Mevcut şifre yanlış.';
       return;
     }
-    if(next.length < 4){
+    if(next.length < MIN_PASSWORD_LENGTH){
       msgEl.style.color = '#e2664e';
-      msgEl.textContent = 'Yeni şifre en az 4 karakter olmalı.';
+      msgEl.textContent = `Yeni şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`;
       return;
     }
     if(next !== confirmPw){
@@ -5439,7 +5603,10 @@
       msgEl.textContent = 'Yeni şifreler birbiriyle uyuşmuyor.';
       return;
     }
-    me.password = next;
+    await setMemberPassword(me, next);
+    delete me.activationCode;
+    await saveSession(me);
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     document.getElementById('currentPasswordInput').value = '';
     document.getElementById('newPasswordInput').value = '';
     document.getElementById('confirmPasswordInput').value = '';
@@ -5456,27 +5623,29 @@
     document.getElementById('adminLogoutConfirmBox').style.display = 'none';
   }
 
-  function changeAdminPassword(){
+  async function changeAdminPassword(){
     const current = document.getElementById('adminCurrentPasswordInput').value;
     const next = document.getElementById('adminNewPasswordInput').value;
     const confirmPw = document.getElementById('adminConfirmPasswordInput').value;
     const msgEl = document.getElementById('adminPasswordChangeMsg');
 
-    const admin = members.find(m => m.role === 'admin');
+    // Eskiden listedeki İLK yöneticinin şifresi değişiyordu (ikinci yönetici kendi şifresini
+    // değiştirmek isterken birincininkini değiştiriyordu). Artık giriş yapmış yöneticininki değişir.
+    const admin = members.find(m => m.role === 'admin' && m.name === currentAdminName);
     if(!admin){ msgEl.style.color = '#e2664e'; msgEl.textContent = 'Bir hata oluştu.'; return; }
     if(!current || !next || !confirmPw){
       msgEl.style.color = '#e2664e';
       msgEl.textContent = 'Lütfen tüm alanları doldur.';
       return;
     }
-    if(current !== admin.password){
+    if(!(await verifyMemberPassword(admin, current))){
       msgEl.style.color = '#e2664e';
       msgEl.textContent = 'Mevcut şifre yanlış.';
       return;
     }
-    if(next.length < 4){
+    if(next.length < MIN_PASSWORD_LENGTH){
       msgEl.style.color = '#e2664e';
-      msgEl.textContent = 'Yeni şifre en az 4 karakter olmalı.';
+      msgEl.textContent = `Yeni şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`;
       return;
     }
     if(next !== confirmPw){
@@ -5484,7 +5653,9 @@
       msgEl.textContent = 'Yeni şifreler birbiriyle uyuşmuyor.';
       return;
     }
-    admin.password = next;
+    await setMemberPassword(admin, next);
+    await saveSession(admin);
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
     document.getElementById('adminCurrentPasswordInput').value = '';
     document.getElementById('adminNewPasswordInput').value = '';
     document.getElementById('adminConfirmPasswordInput').value = '';
@@ -5594,12 +5765,12 @@
   }
   let lastCreatedGroupName = null;
   function adminCreateGroupMembers(){
-    const groupName = document.getElementById('newGroupName').value.trim();
+    const groupName = safeName(document.getElementById('newGroupName').value);
     if(!groupName){ alert('Lütfen grup adı gir.'); return; }
     const rows = Array.from(document.querySelectorAll('#groupMemberRows > div'));
     const entries = rows.map(r => ({
-      name: r.querySelector('.group-row-name').value.trim(),
-      phone: r.querySelector('.group-row-phone').value.trim(),
+      name: safeName(r.querySelector('.group-row-name').value),
+      phone: safeName(r.querySelector('.group-row-phone').value),
     })).filter(e => e.name && e.phone);
     if(!entries.length){ alert('Lütfen en az bir üyenin ad soyad ve telefonunu gir.'); return; }
     for(const e of entries){
@@ -5743,13 +5914,16 @@
     }
     updateHomeAlertsVisibility();
   }
-  function resetPasswordWithCode(idx){
+  async function resetPasswordWithCode(idx){
     const req = passwordResetRequests[idx];
     if(!req) return;
     const matched = members.find(m => m.role !== 'admin' && normalizePhone(m.phone) === normalizePhone(req.phone));
     if(!matched){ alert('Eşleşen üye bulunamadı.'); return; }
-    matched.password = req.code;
-    alert(`${matched.name} için yeni şifre: ${req.code}\nBunu üyeye ilet.`);
+    await setMemberPassword(matched, req.code);
+    matched.activationCode = req.code;
+    matched.mustSetPassword = true;
+    delete loginLocks[accountLockKey(matched)];
+    alert(`${matched.name} için geçici şifre: ${req.code}\nBunu üyeye ilet. Üye ilk girişinde kendi şifresini belirleyecek.`);
     passwordResetRequests.splice(idx, 1);
     renderPasswordResetRequests();
   }
@@ -5995,9 +6169,9 @@
   }
 
   function adminCreateMember(){
-    const name = document.getElementById('newMemberName').value.trim();
-    const phone = document.getElementById('newMemberPhone').value.trim();
-    const groupName = document.getElementById('newMemberGroupName').value.trim();
+    const name = safeName(document.getElementById('newMemberName').value);
+    const phone = safeName(document.getElementById('newMemberPhone').value);
+    const groupName = safeName(document.getElementById('newMemberGroupName').value);
     const referralCodeInput = document.getElementById('newMemberReferralCode').value.trim();
     if(!name || !phone){ alert('Lütfen ad soyad ve telefon numarasını gir.'); return; }
     if(members.some(m => m.name.toLocaleLowerCase('tr-TR') === name.toLocaleLowerCase('tr-TR'))){
@@ -7257,7 +7431,7 @@
     let groupVal = sel ? sel.value.trim() : '';
     if(groupVal === '__new__'){
       const newInput = document.getElementById('groupNewInput-'+mi);
-      groupVal = newInput ? newInput.value.trim() : '';
+      groupVal = newInput ? safeName(newInput.value) : '';
     }
     const target = members.find(x => x.name === memberName);
     if(target) target.group = groupVal || null;
@@ -7547,16 +7721,20 @@
   // Admin üyenin şifresini doğrudan kartından değiştirebilir — "şifremi unuttum" akışı
   // farklı cihaz/sekmeler arasında Firestore senkronu birkaç saniye sürebildiği için,
   // üye giriş yapamadığında en hızlı ve güvenilir çözüm bu.
-  function adminSetMemberPassword(member, mi){
+  async function adminSetMemberPassword(member, mi){
     const input = document.getElementById('cardNewPassword-'+mi);
     const val = input ? input.value.trim() : '';
     if(!val){ alert('Lütfen yeni bir şifre gir.'); return; }
     const m = members.find(x => x.name === member);
     if(!m){ alert('Üye bulunamadı.'); return; }
-    m.password = val;
+    if(val.length < MIN_PASSWORD_LENGTH){ alert(`Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`); return; }
+    await setMemberPassword(m, val);
+    m.activationCode = val;     // üye bu geçici şifreyle girince kendi şifresini belirlemek zorunda kalır
+    m.mustSetPassword = true;
+    delete loginLocks[accountLockKey(m)];
     if(input) input.value = '';
     if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
-    alert(`${member} için yeni şifre kaydedildi: ${val}\nBunu üyeye ilet.`);
+    alert(`${member} için geçici şifre kaydedildi: ${val}\nBunu üyeye ilet. Üye ilk girişinde kendi şifresini belirleyecek.`);
   }
   let expandedMemberProgram = new Set();
   let expandedMemberWater = new Set();
@@ -8929,6 +9107,20 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
   // Kullanıcının elle yazmaya başladığı kutular (yeniden çizimde içerikleri korunur);
   // bir butona basıldığında (form gönderildi/iptal edildi) liste temizlenir.
   const dirtyInputIds = new Set();
+  // Yazı kutularına girilen < > " karakterleri daha yazılırken zararsız eşleriyle değiştirilir
+  // (şifre kutuları hariç) — böylece metin, yazan kişinin kendi ekranında da kod olarak çalışamaz.
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if(!el || el.type === 'password') return;
+    const isText = el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && ['text', 'tel', 'search', 'email', 'url', ''].includes(el.type || ''));
+    if(!isText) return;
+    const cleaned = neutralizeText(el.value);
+    if(cleaned !== el.value){
+      const pos = el.selectionStart;
+      el.value = cleaned;
+      try{ el.setSelectionRange(pos, pos); }catch(err){}
+    }
+  }, true);
   document.addEventListener('input', (e) => { if(e.isTrusted && e.target && e.target.id) dirtyInputIds.add(e.target.id); }, true);
   document.addEventListener('click', (e) => { if(e.target && e.target.closest && e.target.closest('button')) setTimeout(() => dirtyInputIds.clear(), 0); }, true);
 
