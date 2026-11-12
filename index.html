@@ -2863,14 +2863,31 @@
       el.innerHTML = '<div class="meal-empty" style="padding:4px 0;">Salon yönetimi henüz sana bir ders atamadı.</div>';
       return;
     }
-    const c = mine[0];
-    let classDateStr = dateOfThisWeekDay(c.day);
-    if(classDateStr < toLocalDateStr(getNow())) classDateStr = toLocalDateStr(new Date(new Date(classDateStr).getTime() + 7*86400000));
+    // Eskiden her zaman haftanın İLK dersi gösteriliyordu (Çarşamba günü bile "Pazartesi").
+    // Artık şu andan sonraki en yakın ders (sabit program + ekstra dersler) bulunuyor.
+    const now = getNow();
+    const todayStr = toLocalDateStr(now);
+    const candidates = mine.map(entry => {
+      const when = occurrenceDateTimeThisWeek(entry.day, entry.time);
+      if(when <= now) when.setDate(when.getDate() + 7);
+      return { entry, when };
+    });
+    (extraClassDays[currentMemberName] || []).forEach(e => {
+      if(!e || !e.date || !e.time) return;
+      const [h, m] = e.time.split(':').map(Number);
+      const when = new Date(e.date + 'T00:00:00'); when.setHours(h, m, 0, 0);
+      if(when > now) candidates.push({ entry: { ...e, day: (when.getDay() + 6) % 7 }, when });
+    });
+    candidates.sort((a, b) => a.when - b.when);
+    const c = candidates[0].entry;
+    const classDateStr = toLocalDateStr(candidates[0].when);
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayLabel = classDateStr === todayStr ? 'Bugün' : (classDateStr === toLocalDateStr(tomorrow) ? 'Yarın' : days[c.day] + ' ' + formatDateTr(classDateStr).slice(0, 5));
     const seqTypes = getSequenceWorkoutTypes(currentMemberName, classDateStr);
     const displayTypes = seqTypes || (c.workoutTypes || []);
     el.innerHTML = `
       <div class="next-class-title">${c.name}</div>
-      <div class="next-class-meta"><span>🕒 <b>${c.time}</b> · ${days[c.day]}</span><span>👤 <b>${c.trainer}</b></span></div>
+      <div class="next-class-meta"><span>🕒 <b>${c.time}</b> · ${dayLabel}</span><span>👤 <b>${c.trainer}</b></span></div>
       ${displayTypes.length ? `<div style="margin:6px 0;">${displayTypes.map(t => `<span style="display:inline-block; font-size:9.5px; padding:3px 8px; border-radius:20px; background:var(--brass-soft); border:1px solid var(--brass); color:var(--brass); margin:0 4px 4px 0;">${t}</span>`).join('')}</div>` : ''}
       <div style="font-size:12px; color:var(--muted); position:relative;">Bu, salonun sana atadığı sabit programın parçasıdır.</div>`;
   }
