@@ -4,6 +4,7 @@
   "description": "Uygulamayı sahte (in-memory) Firebase ile tarayıcıda test eder — canlı veritabanına dokunmaz.",
   "scripts": {
     "test": "node flow.test.js && node sync.test.js && node sync.test.js legacy && node vendor.test.js",
+    "load": "node load.test.js",
     "smoke": "node smoke.test.js member && node smoke.test.js admin && node smoke.test.js admin2"
   },
   "dependencies": { "playwright": "^1.40.0" }

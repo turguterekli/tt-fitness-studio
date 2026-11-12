@@ -13,7 +13,7 @@ Spor salonu üyelik uygulaması. Arayüz ve yorumlar Türkçe; kullanıcıyla T�
 
 ## index.html içindeki ana bölümler (grep ile bul)
 - `BULUT EŞİTLEME` — `createDocSync`, `createCollectionSync`, `initFirebaseAndLoadData`, `stateRefs`
-- `runTimeChecks`, `runAutoAttendance`, `claimAttendance` — tarihe bağlı işler, yoklama
+- `runTimeChecks`, `runAutoAttendance`, `claimAttendanceBatch` — tarihe bağlı işler, yoklama
 - `loginMember`, `completeLogin`, `logOut`, `deleteMemberCompletely`
 - `refreshAllViews` — başka cihazdan veri gelince / gün değişince ekranı yeniler
 - Üye ekranları `#view-*`, yönetici ekranları `#admin-view-*`
