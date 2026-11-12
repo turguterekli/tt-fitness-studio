@@ -3725,30 +3725,41 @@
     return occ;
   }
 
-  // Bir dersin "yapıldı" olarak işlenip ders hakkından düşülmesi. Aynı anda açık olan birden fazla
-  // cihaz aynı dersi iki kez düşmesin diye buluttaki kayıt üzerinde tek seferlik (transaction) yapılır.
-  const attendanceClaimsInFlight = new Set();
-  async function claimAttendance(logKey, entry, member){
-    if(attendanceClaimsInFlight.has(logKey)) return;
-    attendanceClaimsInFlight.add(logKey);
+  // Yapılan derslerin "yapıldı" olarak işlenip ders hakkından düşülmesi. Aynı anda açık olan birden
+  // fazla cihaz aynı dersi iki kez düşmesin diye buluttaki kayıt üzerinde tek seferlik (transaction)
+  // yapılır. Bekleyen TÜM dersler tek işlemde toplanır: 50 üyenin bir haftalık dersi için bile
+  // yalnızca 2 okuma + 2 yazma yapılır (her ders için ayrı işlem, birbirini kilitleyip başarısız olurdu).
+  let attendanceClaimInFlight = false;
+  async function claimAttendanceBatch(claims){
+    if(attendanceClaimInFlight || !claims.length) return;
+    attendanceClaimInFlight = true;
     const logRef = db.collection('app_data').doc(legacyStorageMode ? 'appState' : 'state_attendanceLog');
     const pkgRef = db.collection('app_data').doc('memberPackages');
     try{
       await flushAllAutosaves();
       await db.runTransaction(async (tx) => {
         const logSnap = await tx.get(logRef);
+        const pkgSnap = await tx.get(pkgRef);
         const logData = logSnap.exists ? (logSnap.data() || {}) : {};
         const existingLog = legacyStorageMode ? (logData.attendanceLog || {}) : logData;
-        if(existingLog[logKey]) return;
-        const pkgSnap = await tx.get(pkgRef);
-        const logEntry = { [logKey]: sanitizeForFirestore(entry) };
-        tx.set(logRef, legacyStorageMode ? { attendanceLog: logEntry } : logEntry, { merge: true });
-        if(pkgSnap.exists && (pkgSnap.data() || {})[member]){
-          tx.update(pkgRef, new firebase.firestore.FieldPath(member, 'used'), firebase.firestore.FieldValue.increment(1));
-        }
+        const pkgData = pkgSnap.exists ? (pkgSnap.data() || {}) : {};
+        const newEntries = {};
+        const usedByMember = {};
+        claims.forEach(({ logKey, entry, member }) => {
+          if(existingLog[logKey] || newEntries[logKey]) return; // başka bir cihaz zaten işlemiş
+          newEntries[logKey] = sanitizeForFirestore(entry);
+          usedByMember[member] = (usedByMember[member] || 0) + 1;
+        });
+        if(!Object.keys(newEntries).length) return;
+        tx.set(logRef, legacyStorageMode ? { attendanceLog: newEntries } : newEntries, { merge: true });
+        const pkgArgs = [];
+        Object.keys(usedByMember).forEach(member => {
+          if(pkgData[member]) pkgArgs.push(new firebase.firestore.FieldPath(member, 'used'), firebase.firestore.FieldValue.increment(usedByMember[member]));
+        });
+        if(pkgArgs.length) tx.update(pkgRef, ...pkgArgs);
       });
     } finally {
-      attendanceClaimsInFlight.delete(logKey);
+      attendanceClaimInFlight = false;
     }
   }
 
@@ -3782,15 +3793,16 @@
           if(now >= occDate && !attendanceLog[logKey] && !beforePackageStart){
             // Katılım onayında "Katılamayacağım" dese bile ders hakkı düşer — grup seansları için de geçerli:
             // seans tutulduysa (saat geçtiyse) tek kişi bile gelse herkesin hakkı düşer.
-            claims.push(claimAttendance(logKey, {
+            claims.push({ logKey, member, entry: {
               status: 'done', member, day: entry.day, time: entry.time,
               date: dateKey, name: entry.name, trainer: entry.trainer,
-            }, member));
+            } });
           }
         });
       });
     });
-    Promise.all(claims).then(() => {
+    if(attendanceClaimInFlight) return; // önceki işlem bitmeden yenisini başlatma
+    claimAttendanceBatch(claims).then(() => {
       // Test için saat ileri/geri alınmışken "kontrol edildi" tarihini kaydetme
       if(simulatedOffsetMs === 0 && appMeta.attendanceCheckedUntil !== todayStr) appMeta.attendanceCheckedUntil = todayStr;
     }).catch(err => console.error('Otomatik yoklama işlenemedi:', err));
