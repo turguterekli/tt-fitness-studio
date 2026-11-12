@@ -34,12 +34,12 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.click('#confirmAddMealBtn-0');
   await page.waitForTimeout(300);
   const mealText = await page.textContent('#mealBlocks');
-  check('meal added & escaped', mealText.includes('Yumurta <b>haşlama</b>'));
+  check('meal added & escaped', mealText.includes('Yumurta ‹b›haşlama‹/b›'));
   // 4. message
   await page.evaluate(() => openMemberSubScreen('messages'));
   await page.fill('#myMessageInput', 'Merhaba <img src=x onerror="window.__pwn=1">');
   await page.click('#view-messages button:has-text("Gönder")');
-  check('member message rendered as text', (await page.textContent('#myMessageThread')).includes('<img src=x'));
+  check('member message rendered as text', (await page.textContent('#myMessageThread')).includes('‹img src=x'));
   await flush(); await page.waitForTimeout(300);
   // 5. reload -> auto login, data persisted
   await reload();
@@ -71,7 +71,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   // admin meal review shows meal (escaped)
   await page.evaluate(() => { navigateToAdminScreen('mealreview'); toggleMealCard('Mert Aydın'); });
   const mr = await page.textContent('#adminMealList');
-  check('admin sees member meal escaped', mr.includes('Yumurta <b>haşlama</b>'));
+  check('admin sees member meal escaped', mr.includes('Yumurta ‹b›haşlama‹/b›'));
   const commented = await page.evaluate(() => { const inp = document.querySelector('[id^=photoComment-]'); if(!inp) return false; inp.value='Güzel <i>tabak</i>'; inp.nextElementSibling.click(); return true; });
   check('admin can comment on meal photo', commented);
   // 7. create member
@@ -92,7 +92,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await login(page, '0542 249 32 27', '1234');
   await page.evaluate(() => { skipOnboarding(); openMemberSubScreen('messages'); });
   await page.evaluate(() => switchTab('nutrition'));
-  check('member sees trainer photo comment', (await page.textContent('#mealBlocks')).includes('Antrenör: Güzel <i>tabak</i>'));
+  check('member sees trainer photo comment', (await page.textContent('#mealBlocks')).includes('Antrenör: Güzel ‹i›tabak‹/i›'));
   await page.evaluate(() => openMemberSubScreen('messages'));
   check('member sees admin reply', (await page.textContent('#myMessageThread')).includes('görüşürüz'));
   // Giriş kaydı ve hatalı deneme sınırı
@@ -101,7 +101,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('locked after 5 wrong passwords', (await page.textContent('#loginError')).includes('Çok fazla hatalı deneme'));
   await login(page, 'admin1', 'tt2026');
   check('correct password refused while locked', await page.isVisible('#logged-out-screen'));
-  await page.evaluate(() => localStorage.removeItem('ttf_login_fail'));
+  await page.evaluate(() => { localStorage.removeItem('ttf_login_fail'); Object.keys(loginLocks).forEach(k => delete loginLocks[k]); });
   await login(page, 'admin1', 'tt2026');
   await page.evaluate(() => openAdminSettings());
   const logText = await page.textContent('#loginLogList');
@@ -116,6 +116,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.click('#deleteAccountBtn');
   await page.fill('#deleteAccountPassword', 'yanlis');
   await page.click('#deleteAccountConfirmBtn');
+  await page.waitForTimeout(600);
   check('account deletion needs correct password', (await page.textContent('#deleteAccountMsg')).includes('hatalı'));
   await page.fill('#deleteAccountPassword', '1234');
   await page.click('#deleteAccountConfirmBtn');
@@ -127,7 +128,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('deleted member: member doc removed', !Object.keys(st).some(k => k.startsWith('members/') && st[k].name === 'Mert Aydın'));
   check('deleted member: photo file deleted from storage', await page.evaluate(() => (window.__deletedFiles || []).includes('https://example.invalid/p.jpg')));
   await login(page, '0542 249 32 27', '1234');
-  check('deleted member cannot log in', (await page.textContent('#loginError')).includes('bulunamadı'));
+  check('deleted member cannot log in', (await page.textContent('#loginError')).includes('hatalı') && await page.isVisible('#logged-out-screen'));
   await page.reload(); await page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
   await page.waitForTimeout(1500);
   st = await storeNow();

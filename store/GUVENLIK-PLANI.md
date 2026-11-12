@@ -2,10 +2,25 @@
 
 ## Bugünkü durum
 
-- Uygulama Firebase'e **anonim** giriş yapar ve `members` koleksiyonunun tamamını okur.
-- Üye şifreleri bu koleksiyonda **açık metin** durur; giriş kontrolü telefonda yapılır.
-- Sonuç: uygulamayı açan herkes teknik olarak tüm üyelerin verisini ve şifresini okuyabilir.
-  Uygulamadaki giriş ekranı, hatalı deneme sınırı ve giriş kaydı bunu engellemez.
+Uygulama kodunda yapılanlar (testi: `tests/security.test.js`):
+
+- Şifreler artık **açık metin saklanmıyor**: rastgele tuz + PBKDF2 (SHA-256, 150.000 tur) özeti saklanır.
+  Eski şifreler, üye bir sonraki başarılı girişinde otomatik özetlenir.
+- Yönetimin verdiği kodla/geçici şifreyle giren üye, devam etmeden **kendi şifresini belirler** (en az 6 karakter).
+- "Beni hatırla" oturumu şifre özetine bağlı bir anahtarla doğrulanır; sahte oturum ve şifre
+  değiştikten sonraki eski oturum reddedilir.
+- 5 hatalı denemede hem cihaz hem **hesap** (tüm cihazlardan) 5 dakika kilitlenir.
+- Bilinmeyen numara ile yanlış şifre aynı hata mesajını verir.
+- Metinlerdeki `< > "` karakterleri yazılırken, buluta yazılırken ve buluttan okunurken süzülür (kod enjeksiyonu).
+
+Kodla kapatılamayan, **hâlâ açık** olanlar:
+
+- Uygulama Firebase'e **anonim** giriş yapar ve tüm üye verisini (sağlık beyanları dahil) okur;
+  veritabanı kuralları kişiye göre kısıtlamaz. Uygulamayı açan herkes teknik olarak bu veriyi okuyabilir.
+- Şifre özetleri de okunabildiği için kısa/tahmin edilebilir şifreler deneme-yanılma ile bulunabilir.
+- Giriş kontrolü ve deneme sınırı telefonda çalışır; veritabanına doğrudan bağlanan biri bunları atlar.
+
+Bunların çözümü aşağıdaki geçiştir.
 
 ## Hedef
 

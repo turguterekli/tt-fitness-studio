@@ -9,7 +9,8 @@ aynen Android ve iOS paketinin içine konur. Uygulama kimliği: **`com.ttfitness
 
 ## Yayından önce bitmesi gerekenler
 
-- [ ] **Şifre güvenliği** — bkz. `store/GUVENLIK-PLANI.md`. Şifreler şu an veritabanında açık metin.
+- [ ] **Veritabanı erişim kuralları** — bkz. `store/GUVENLIK-PLANI.md`. Şifreler artık özetli saklanıyor, ama üye verisi
+      hâlâ uygulamayı açan herkesçe okunabilir; Firebase konsolunda yapılacak adımlar var.
 - [ ] **Gizlilik politikası** — `privacy-policy.html` içindeki e-posta / telefon / adres alanlarını doldur.
 - [ ] **Deneme hesapları** — `admin1` ve örnek üyelerin şifrelerini değiştir.
 - [ ] **Yüksek çözünürlüklü logo** — eldeki logo 240 piksel; ikonlar ondan büyütüldü ve hafif bulanık.
