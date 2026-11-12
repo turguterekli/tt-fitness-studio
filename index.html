@@ -999,6 +999,22 @@
           </div>
         </div>
       </div>
+
+      <div class="card">
+        <button class="btn btn-full" id="deleteAccountBtn" style="background:none; border:none; color:var(--muted); font-size:12.5px; text-decoration:underline;" onclick="showDeleteAccountConfirm()">Hesabımı ve tüm verilerimi sil</button>
+        <div id="deleteAccountBox" style="display:none; margin-top:12px;">
+          <div style="font-size:12.5px; color:var(--chalk); line-height:1.6; margin-bottom:10px;"><b style="color:#e2664e;">Bu işlem geri alınamaz.</b> Hesabın, profilin, sağlık beyanın, ölçümlerin, fotoğrafların, öğün kayıtların, mesajların ve ders geçmişin kalıcı olarak silinir. Devam etmek için şifreni yaz.</div>
+          <div class="auth-field" style="margin-bottom:10px;">
+            <span class="auth-icon">🔒</span>
+            <input type="password" id="deleteAccountPassword" class="auth-input" placeholder="Şifren">
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" style="flex:1;" onclick="hideDeleteAccountConfirm()">Vazgeç</button>
+            <button class="btn btn-full" id="deleteAccountConfirmBtn" style="flex:1; background:var(--red); color:#fff;" onclick="deleteMyAccount()">Kalıcı Olarak Sil</button>
+          </div>
+          <div id="deleteAccountMsg" style="font-size:11.5px; color:#e2664e; margin-top:8px; text-align:center;"></div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -2126,7 +2142,13 @@
     }
     setInterval(tick, 1000);
     registerAutosaveFlusher(tick);
-    return { ingestDoc, markSynced, tick };
+    // Bir kaydı buluttan kalıcı olarak siler (yerel diziden çıkarmak çağıranın işi)
+    async function deleteDoc(id){
+      if(!id) return;
+      synced.delete(id);
+      await db.collection(collectionName).doc(id).delete();
+    }
+    return { ingestDoc, markSynced, tick, deleteDoc };
   }
 
   // Başka bir cihazdan veri geldiğinde ekranı tazeler. Kullanıcı o an bir kutuya yazı
@@ -2158,6 +2180,7 @@
   }
 
   let knownStateFields = null;
+  let allStateRefs = []; // [veri, alan adı, tür] — hesap silme gibi toplu işlemler için
   // Eski tek belgede bu sürümün tanımadığı alanlar olabilir (örn. eski ortak bildirim listesi) — onlara dokunma
   function filterKnownFields(docId, data){
     if(docId !== 'appState' || !knownStateFields) return data;
@@ -2238,6 +2261,7 @@
       // Önce koleksiyonu topluca okumayı dene; veritabanı kuralları toplu okumaya izin vermiyorsa
       // belgeleri tek tek oku (eski sürümün yaptığı gibi).
       knownStateFields = new Set(stateRefs.map(r => r[1]));
+      allStateRefs = stateRefs;
       const appDataDocs = {};
       let appDataListAllowed = true;
       try{
@@ -5270,6 +5294,94 @@
       : 'Profilin güncellendi.';
   }
 
+  // ---- Hesap silme ----
+  // Üyenin hesabını ve ona ait TÜM kişisel verileri (profil, sağlık beyanı, ölçüm, fotoğraf, öğün,
+  // mesaj, program, paket, yoklama, ödeme kayıtları, onaylar) buluttan kalıcı olarak siler.
+  // Salonun genel gelir/gider defteri (financeEntries) üyeye bağlı olmadığı için silinmez.
+  async function deleteMemberCompletely(name){
+    const idx = members.findIndex(x => x.name === name);
+    if(idx === -1 || members[idx].role === 'admin') return false;
+    const member = members[idx];
+
+    // Buluttaki fotoğraf dosyaları
+    const photoUrls = [];
+    (posturePhotos[name] || []).forEach(p => { if(p && p.photo) photoUrls.push(p.photo); });
+    (progressEntries[name] || []).forEach(p => { if(p && p.photo) photoUrls.push(p.photo); });
+    Object.values(memberMeals[name] || {}).forEach(arr => (arr || []).forEach(x => { if(x && x.photo) photoUrls.push(x.photo); }));
+    if(memberProfiles[name] && memberProfiles[name].photo) photoUrls.push(memberProfiles[name].photo);
+
+    const keepFields = ['appMeta', 'priceSettings'];
+    allStateRefs.forEach(([ref, field, kind]) => {
+      if(kind !== 'object' || keepFields.includes(field)) return;
+      delete ref[name];
+      // "üye|gün|saat|tarih" gibi bileşik anahtarlar (yoklama, katılım onayı, foto yorumu)
+      Object.keys(ref).forEach(k => { if(k.startsWith(name + '|')) delete ref[k]; });
+    });
+    delete memberPackages[name];
+    Object.keys(loginLog).forEach(k => { if(loginLog[k] && loginLog[k].who === name) delete loginLog[k]; });
+    Object.keys(referrals).forEach(r => { referrals[r] = (referrals[r] || []).filter(n => n !== name); });
+    const removeWhere = (arr, pred) => { for(let i = arr.length - 1; i >= 0; i--){ if(pred(arr[i])) arr.splice(i, 1); } };
+    removeWhere(sessionRequests, r => r && r.member === name);
+    removeWhere(pendingCreditRequests, r => r && r.member === name);
+    removeWhere(passwordResetRequests, r => r && normalizePhone(r.phone) === normalizePhone(member.phone));
+    removeWhere(announcements, a => a && a.target === 'member:' + name);
+    announcements.forEach(a => {
+      if(a.target && a.target.startsWith('multi:')) a.target = 'multi:' + a.target.slice(6).split('|').filter(n => n !== name).join('|');
+    });
+
+    members.splice(idx, 1);
+    try{ ['notifs', 'dismissed'].forEach(kind => localStorage.removeItem('ttf_' + kind + '_' + name)); localStorage.removeItem('ttf_onboarded_' + name); }catch(e){}
+
+    await flushAllAutosaves();
+    if(membersSync && member._id) await membersSync.deleteDoc(member._id);
+    // Fotoğraf dosyalarını da sil (biri silinemezse diğerlerine devam et)
+    await Promise.all(photoUrls.filter(u => typeof u === 'string' && u.startsWith('http')).map(u => {
+      try{ return storage.refFromURL(u).delete().catch(() => null); }catch(e){ return null; }
+    }));
+    return true;
+  }
+  function showDeleteAccountConfirm(){
+    document.getElementById('deleteAccountBtn').style.display = 'none';
+    document.getElementById('deleteAccountBox').style.display = 'block';
+    document.getElementById('deleteAccountPassword').value = '';
+    document.getElementById('deleteAccountMsg').textContent = '';
+  }
+  function hideDeleteAccountConfirm(){
+    document.getElementById('deleteAccountBtn').style.display = 'block';
+    document.getElementById('deleteAccountBox').style.display = 'none';
+  }
+  async function deleteMyAccount(){
+    const me = members.find(m => m.name === currentMemberName);
+    const msgEl = document.getElementById('deleteAccountMsg');
+    if(!me || me.role === 'admin') return;
+    if(document.getElementById('deleteAccountPassword').value !== me.password){ msgEl.textContent = 'Şifre hatalı.'; return; }
+    const btn = document.getElementById('deleteAccountConfirmBtn');
+    btn.disabled = true; btn.textContent = 'Siliniyor…';
+    try{
+      const name = currentMemberName;
+      memberSessionActive = false;
+      await deleteMemberCompletely(name);
+      hideDeleteAccountConfirm();
+      logOut();
+      document.getElementById('loginError').textContent = 'Hesabın ve tüm verilerin silindi.';
+    }catch(err){
+      console.error('Hesap silinemedi:', err);
+      memberSessionActive = true;
+      msgEl.textContent = 'Hesap silinemedi. İnternet bağlantını kontrol edip tekrar dene.';
+    }finally{
+      btn.disabled = false; btn.textContent = 'Kalıcı Olarak Sil';
+    }
+  }
+  function adminDeleteMember(name){
+    if(adminTrainerScope){ alert('Üye silme işlemini sadece tam yetkili yönetici yapabilir.'); return; }
+    customConfirm(`"${name}" adlı üyeyi ve ona ait tüm verileri (profil, sağlık beyanı, ölçümler, fotoğraflar, öğünler, mesajlar, paket ve ders geçmişi) kalıcı olarak silmek istediğine emin misin? Bu işlem geri alınamaz.`, async (ok) => {
+      if(!ok) return;
+      try{ await deleteMemberCompletely(name); }
+      catch(err){ console.error('Üye silinemedi:', err); alert('Üye silinemedi. İnternet bağlantını kontrol edip tekrar dene.'); }
+      refreshAllViews();
+    });
+  }
+
   function changePassword(){
     const current = document.getElementById('currentPasswordInput').value;
     const next = document.getElementById('newPasswordInput').value;
@@ -6904,6 +7016,7 @@
             <input type="text" id="cardNewPassword-${mi}" class="calc-input" placeholder="Yeni şifre belirle" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
             <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminSetMemberPassword('${m.name}', ${mi})">🔑 Şifreyi Değiştir</button>
           </div>
+          <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; margin-bottom:8px; color:#e2664e; border-color:var(--red);" onclick="adminDeleteMember('${m.name}')">🗑️ Üyeyi ve tüm verilerini sil</button>
           ${isVipMember(m) ? `<div style="font-size:10.5px; color:var(--brass); font-weight:600; margin-bottom:5px;">⭐ Sadık Üye — ${formatDateTr(m.joinDate)} tarihinden beri üye</div>` : ''}
           ${!memberHasAnyTrainer(m.name) ? '<div style="font-size:10.5px; color:var(--red); font-weight:600; margin-bottom:5px;">⚠️ Antrenör atanmadı</div>' : ''}
 
@@ -8755,6 +8868,11 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       const isCheck = el.type === 'checkbox' || el.type === 'radio';
       saved.push([el.id, isCheck, isCheck ? el.checked : el.value]);
     });
+    // Hesabım başka bir cihazdan (yönetici tarafından) silindiyse oturumu kapat
+    if(memberVisible && !members.some(m => m.name === currentMemberName)){
+      if(memberSessionActive){ logOut(); document.getElementById('loginError').textContent = 'Bu hesap silinmiş.'; }
+      return; // silinmekte olan hesap için ekranı yeniden çizme (silinen veriyi geri oluşturmasın)
+    }
     const safe = (fn) => { try{ fn(); }catch(e){ console.error('Yenileme hatası:', e); } };
     if(adminVisible){
       [renderPriceForm, renderConsumption, renderAdminAvailability, renderAdminMeals, renderProgramForm, renderAssignedPrograms,
@@ -8962,7 +9080,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     // PWA: Service worker — ana ekrana eklenebilme ve internet yokken açılabilme için.
     // Sayfa her zaman ÖNCE internetten (en güncel sürüm) yüklenir; önbellek sadece çevrimdışıyken
     // kullanılır, böylece eski sürümün takılı kalması sorunu yaşanmaz.
-    if('serviceWorker' in navigator && location.protocol === 'https:'){
+    if('serviceWorker' in navigator && location.protocol === 'https:' && !window.Capacitor){
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('service-worker.js').then(reg => reg.update()).catch(err => console.warn('Service worker kaydedilemedi:', err));
       });

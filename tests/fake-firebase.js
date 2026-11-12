@@ -102,6 +102,7 @@
       get: async () => { guard(path); return makeDocSnap(path, load()[path]); },
       set: async (data, opts) => commit(s => applySet(s, path, data, opts), [path]),
       update: async (...args) => commit(s => applyUpdate(s, path, args), [path]),
+      delete: async () => commit(s => { delete s[path]; }, [path]),
       onSnapshot: (cb) => addListener({ kind: 'doc', path, cb, seen: undefined, fired: false }),
     };
   }
@@ -137,6 +138,6 @@
     initializeApp(){ return {}; },
     firestore,
     auth: () => ({ signInAnonymously: async () => ({ user: { uid: 'anon' } }), currentUser: { uid: 'anon' } }),
-    storage: () => ({ ref: () => ({ child: p => ({ putString: async () => {}, getDownloadURL: async () => 'https://example.invalid/' + p }) }) }),
+    storage: () => ({ refFromURL: u => ({ delete: async () => { (window.__deletedFiles ||= []).push(u); } }), ref: () => ({ child: p => ({ putString: async () => {}, getDownloadURL: async () => 'https://example.invalid/' + p }) }) }),
   };
 })();
