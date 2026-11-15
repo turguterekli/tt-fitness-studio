@@ -2,7 +2,7 @@
 const { newContext, openPage, login } = require('./lib');
 const results = [];
 const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+name+(extra?' — '+extra:'')); };
-const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+const store = page => page.evaluate(() => window.__fakeDump());
 const wait = (page, ms) => page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms).catch(()=>{});
 
 const AYSE = 'Ayşe Yılmaz';
@@ -19,6 +19,7 @@ const seed = {
   'app_data/appState': {
     memberMessages: { [AYSE]: [{ from:'member', text:'eski mesaj', date:'2026-11-01', time:'10:00' }] },
     contractAccepted: { [AYSE]: true, 'Ali Veli': true }, contractAcceptedVersion: { [AYSE]: 1, 'Ali Veli': 1 },
+    consentRecords: { [AYSE]: { contract: true, kvkkRead: true, abroad: true, health: true, textVersion: 2 }, 'Ali Veli': { contract: true, kvkkRead: true, abroad: true, health: true, textVersion: 2 } },
     memberProfiles: { [AYSE]: { name:AYSE, birthday:'1990-05-05', theme:'dark' }, 'Ali Veli': { name:'Ali Veli', birthday:'1991-01-01', theme:'dark' } },
     memberPrograms: { [AYSE]: [{ day:0, time:'10:00', name:'Antrenman', trainer:'Turgut Terekli', room:'TT Fitness' }] },
     announcements: [{ id: 77, target:'all', message:'Hoş geldiniz', date:'2026-11-10' }],
@@ -128,7 +129,7 @@ const legacyJson = JSON.stringify(seed['app_data/appState']);
   check('missed weeks caught up (Nov 16, 23, 30)', ['2026-11-16','2026-11-23','2026-11-30'].every(d => keys2.includes(`${AYSE}|0|10:00|${d}`)) && keys2.length === 4, keys2.join(';'));
   check('sessions deducted for each missed week (3 -> 6)', s['app_data/memberPackages'][AYSE].used === 6, 'used=' + s['app_data/memberPackages'][AYSE].used);
   if(!(await C.page.isVisible('#member-app'))) await login(C.page, '0500 111 22 33', 'yeni1');
-  await C.page.evaluate(() => { if(document.getElementById('view-contractgate').classList.contains('active')){ contractAcceptedVersion[currentMemberName] = CONTRACT_VERSION; } });
+  await C.page.evaluate(() => { if(document.getElementById('view-contractgate').classList.contains('active')){ contractAcceptedVersion[currentMemberName] = CONTRACT_VERSION; consentRecords[currentMemberName] = { contract: true, kvkkRead: true, abroad: true, health: true, textVersion: LEGAL_TEXT_VERSION }; } });
   await wait(C.page, 2500);
   s = await store(C.page);
   check('new month: last month meals cleared', (field(s, 'memberMeals')[AYSE]['Öğle']||[]).length === 0);

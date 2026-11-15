@@ -2,17 +2,35 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <!-- Ana ekrana eklenmiş uygulama bazen eski sürümü önbellekten göstermeye devam edebiliyor
      (silip tekrar eklemeyi gerektiren asıl sebep budur) — bu etiketler tarayıcıyı sayfayı
      önbelleğe almaması için uyarıyor, güncellemelerin daha güvenilir yansımasına yardımcı olur. -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>TT Fitness Studio</title>
+<title>TT Fitness Studio — Üye Uygulaması</title>
+<meta name="description" content="TT Fitness Studio üyeleri için ders programı, üyelik ve paket takibi, beslenme günlüğü ve gelişim takibi uygulaması.">
+<link rel="canonical" href="https://turguterekli.github.io/tt-fitness-studio/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TT Fitness Studio">
+<meta property="og:title" content="TT Fitness Studio — Üye Uygulaması">
+<meta property="og:description" content="Ders programı, üyelik ve paket takibi, beslenme günlüğü ve gelişim takibi.">
+<meta property="og:url" content="https://turguterekli.github.io/tt-fitness-studio/">
+<meta property="og:image" content="https://turguterekli.github.io/tt-fitness-studio/og-image.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="500">
+<meta property="og:locale" content="tr_TR">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"TT Fitness Studio","url":"https://turguterekli.github.io/tt-fitness-studio/","applicationCategory":"HealthApplication","operatingSystem":"Web, Android, iOS","inLanguage":"tr","description":"TT Fitness Studio üyeleri için ders programı, üyelik, beslenme ve gelişim takibi uygulaması."}</script>
+
+<!-- Güvenlik: sayfanın yalnızca kendi dosyalarını ve Firebase'i kullanmasına izin verilir (başka bir yerden
+     kod yüklenemez, veri başka bir adrese gönderilemez); başka sitelere yönlendirirken adres bilgisi paylaşılmaz. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.googleusercontent.com http://127.0.0.1:9199; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasestorage.app https://cdn.jsdelivr.net http://127.0.0.1:8080 http://127.0.0.1:9099 http://127.0.0.1:9199 ws://127.0.0.1:8080; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 
 <!-- PWA: Ana ekrana eklendiğinde gerçek bir uygulama gibi açılması için -->
-<meta name="theme-color" content="#CE997A">
+<meta name="theme-color" content="#15171B" id="themeColorMeta">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -103,14 +121,20 @@
        ortalama/boşluk hesaplaması devre dışı kaldığı için altta/üstte fazladan boşluk kalmaz.
        Üst bar (Anasayfa/Arama başlıkları vb.), telefonun gerçek çentiği/durum çubuğu/Dynamic
        Island'ının arkasında kalıp tıklanamaz olmasın diye fazladan güvenli alan payı alıyor. */
+    /* Yükseklik: "%100" iPhone'da (özellikle ana ekrandan açıldığında) ekranın en altını kaplamıyor,
+       arkadaki koyu zemin siyah bir şerit olarak görünüyordu. Görünen alanı izleyen 100dvh kullanılır
+       (eski tarayıcılar için 100vh yedeği) ve arkadaki zemin uygulamayla aynı renge boyanır. */
+    html{ background:#15171B; }
     html, body{
-      position:fixed !important; inset:0 !important; width:100% !important; height:100% !important;
+      position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:auto !important;
+      width:100% !important; height:100vh !important; height:100dvh !important;
       overflow:hidden !important; overscroll-behavior:none; touch-action:pan-y;
     }
-    body{ padding:0 !important; margin:0 !important; display:block !important; }
+    body{ padding:0 !important; margin:0 !important; display:block !important; background:var(--page-bg, #15171B) !important; }
     .phone{
-      position:absolute !important; inset:0 !important; width:100% !important; height:100% !important;
-      max-width:100% !important; max-height:100% !important;
+      position:absolute !important; top:0 !important; left:0 !important; right:0 !important; bottom:auto !important;
+      width:100% !important; height:100vh !important; height:100dvh !important;
+      max-width:100% !important; max-height:none !important;
       border-radius:0 !important; border:none !important; box-shadow:none !important;
     }
     /* !important: bu değerler dosyanın aşağısındaki genel .topbar/.screen/.tabbar
@@ -133,7 +157,28 @@
   }
   /* Butonlara/sekmelere dokununca 300ms'lik gecikme ya da çift-dokunuşla yakınlaştırma
      olmasın diye — normal bir uygulamadaki gibi anında tepki versin. */
-  .btn, .tab, .nav-drawer-item, input, select, textarea{ touch-action:manipulation; }
+  .btn, .tab, .nav-drawer-item, input, select, textarea, button, [onclick]{ touch-action:manipulation; }
+  /* Butonlara uzun basınca metin seçilmesin / iOS menüsü açılmasın (yazı alanları hariç) */
+  button, .btn, .tab, .tabbar, .topbar, .day-chip, .prog-day-chip, .avail-chip, .nav-drawer-item, .meal-add, .rm, [onclick]{
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  }
+  /* Dokunulduğu anda tepki: sekmeler ve dokunulabilir satırlar da basılınca hafifçe küçülür */
+  .tab, .day-chip, .prog-day-chip, .avail-chip, .meal-add, .nav-drawer-item{ transition:transform .12s ease-out, background .12s ease-out; }
+  .tab:active, .day-chip:active, .prog-day-chip:active, .avail-chip:active, .meal-add:active{ transform:scale(0.95); }
+  .nav-drawer-item:active{ background:var(--panel-2); }
+  /* Ekran değişiminde kısa bir belirme (hareketi azalt ayarı açıksa kapalı) */
+  @keyframes viewIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+  .view.active, .aview.active{ animation:viewIn .18s ease-out; }
+  @media (prefers-reduced-motion: reduce){
+    .view.active, .aview.active{ animation:none; }
+    .btn, .tab, .day-chip, .prog-day-chip, .avail-chip, .meal-add{ transition:none; }
+  }
+  /* Fare olmayan (dokunmatik) cihazlarda "üzerine gelince" görünümü dokunuştan sonra takılı kalmasın */
+  @media (hover: none){
+    .btn-brass:hover{ background:var(--brass); }
+    .btn-ghost:hover{ border-color:var(--line); color:var(--chalk); }
+    .nav-drawer-item:hover{ background:none; }
+  }
 
   .screen{flex:1; overflow-y:auto; padding:4px 20px 24px; scrollbar-width:none;}
   .screen::-webkit-scrollbar{display:none;}
@@ -304,6 +349,33 @@
   <script src="vendor/firebase-storage-compat.js"></script>
 </head>
 <body>
+<script>
+  // HTTPS zorunlu: http ile açılırsa güvenli adrese yönlendir (yerel geliştirme hariç)
+  if(location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)){ location.replace('https:' + location.href.slice(5)); }
+  // Uygulama başka bir sitenin içine gömülerek (çerçeve) açılamaz — sahte sayfa üzerinden tıklatma saldırısına karşı
+  if(window.top !== window.self){ try{ window.top.location = window.self.location; }catch(e){ document.documentElement.style.display = 'none'; } }
+  // Beklenmeyen hatalar: uygulama sessizce takılı kalmasın; kullanıcıya kısa bir uyarı gösterilir, ayrıntı konsola yazılır
+  (function(){
+    let lastShown = 0;
+    function report(kind, message){
+      console.error('[beklenmeyen hata]', kind, message);
+      const now = Date.now();
+      if(now - lastShown < 15000) return;
+      lastShown = now;
+      const el = document.getElementById('globalErrorToast');
+      if(!el) return;
+      el.style.display = 'block';
+      setTimeout(function(){ el.style.display = 'none'; }, 6000);
+    }
+    window.addEventListener('error', function(e){ if(e && e.message && !/ResizeObserver|Script error/.test(e.message)) report('hata', e.message); });
+    window.addEventListener('unhandledrejection', function(e){
+      const msg = e && e.reason ? (e.reason.message || String(e.reason)) : '';
+      if(/permission|offline|network|unavailable|auth\//i.test(msg)) return; // bağlantı/yetki hataları ilgili yerde zaten gösteriliyor
+      report('işlem', msg);
+    });
+  })();
+</script>
+<div id="globalErrorToast" style="display:none; position:fixed; left:16px; right:16px; bottom:calc(90px + env(safe-area-inset-bottom)); z-index:99997; background:#2a1512; border:1px solid #C1432B; color:#ECEAE4; font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; line-height:1.5; padding:10px 14px; border-radius:12px; text-align:center;">Bir şeyler ters gitti. Sayfayı yenileyip tekrar dene; sorun sürerse salon yönetimine haber ver.</div>
 
 <div id="cloudLoadingOverlay" style="position:fixed; inset:0; z-index:99999; background:#15171B; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; font-family:'IBM Plex Sans', sans-serif;">
   <div style="width:42px; height:42px; border-radius:50%; border:3px solid rgba(206,153,122,0.25); border-top-color:#CE997A; animation:cloudSpin 0.8s linear infinite;"></div>
@@ -669,7 +741,7 @@
       <div class="app-header">
         <div class="greeting" style="margin-top:6px;">Devam Etmeden Önce</div>
       </div>
-      <div class="greeting-sub" id="contractGateSubtitle">Üyelik sözleşmesini ve KVKK aydınlatma metnini okuyup onaylaman gerekiyor.</div>
+      <div class="greeting-sub" id="contractGateSubtitle">Üyelik sözleşmesini onaylaman ve aydınlatma metnini okuman gerekiyor. Açık rızalar isteğe bağlıdır.</div>
 
       <div class="card" style="margin-bottom:14px;">
         <div class="card-label">DOĞUM TARİHİ <span style="color:var(--red); font-weight:400;">(zorunlu)</span></div>
@@ -699,60 +771,46 @@
         </label>
       </div>
 
-      <div class="card" style="max-height:340px; overflow-y:auto; margin-bottom:14px;">
-        <div style="font-size:12px; color:var(--chalk); line-height:1.8;">
-          <b style="color:var(--brass); font-size:13px;">ÜYELİK SÖZLEŞMESİ</b><br><br>
-          <b>1. Taraflar</b><br>Bu sözleşme, TT Fitness Studio ("Salon") ile üye arasında akdedilmiştir.<br><br>
-          <b>2. Üyelik Süresi ve Paket</b><br>Üyenin paketi, belirtilen başlangıç ve bitiş tarihleri arasında, belirlenen ders sayısı kadar geçerlidir.<br><br>
-          <b>3. Devamsızlık ve Ders Hakkı</b><br>Ders saati geçtiğinde, üyenin derse katılıp katılmadığına bakılmaksızın ders hakkı düşer. Grup seanslarında tek bir üye bile katılsa, ders yapılmış sayılır.<br><br>
-          <b>4. Ödeme</b><br>Paket bedeli, paket başlangıcında veya salon yönetimiyle mutabık kalınan şekilde ödenir.<br><br>
-          <b>5. İptal ve Devir</b><br>Üyelik, salon yönetiminin onayı olmadan başka bir kişiye devredilemez.<br><br>
-          <b>6. Sağlık Sorumluluğu</b><br>Üye, spor yapmaya elverişli olduğunu beyan eder. Sağlık durumuna dair değişiklikleri salon yönetimine bildirmekle yükümlüdür.<br><br>
-
-          <b style="color:var(--brass); font-size:13px;">KVKK AYDINLATMA METNİ</b><br><br>
-          <b>1. Veri Sorumlusu</b><br>Kişisel verileriniz, veri sorumlusu sıfatıyla TT Fitness Studio tarafından, 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") uyarınca işlenmektedir.<br><br>
-          <b>2. İşlenen Veri Kategorileri</b><br>Ad-soyad, telefon numarası, doğum tarihi, ölçüm ve gelişim verileri (kilo, ölçüler, postür fotoğrafları), beslenme kayıtları, ödeme bilgileri.<br><br>
-          <b>3. İşleme Amaçları</b><br>Üyelik ve ders programının yürütülmesi, ödeme ve paket takibi, antrenman ve beslenme danışmanlığı, yasal yükümlülüklerin yerine getirilmesi.<br><br>
-          <b>4. Aktarım</b><br>Verileriniz, yasal zorunluluklar dışında üçüncü kişilerle paylaşılmaz.<br><br>
-          <b>5. Haklarınız</b><br>KVKK'nın 11. maddesi uyarınca; verilerinizin işlenip işlenmediğini öğrenme, düzeltilmesini veya silinmesini isteme ve diğer kanuni haklarınız için salon yönetimine başvurabilirsiniz.
-        </div>
-      </div>
-
+      <!-- 1) SÖZLEŞME — yalnızca üyelik koşulları -->
       <div class="card" style="margin-bottom:14px;">
-        <div class="card-label">SAĞLIK BEYANI</div>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:10px;">
-          <input type="radio" name="healthDeclRadio" id="healthDeclNone" checked style="margin-top:2px; flex-shrink:0;" onchange="toggleHealthDeclDetails()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Bilinen bir sağlık sorunum/rahatsızlığım yok, spor yapmaya elverişliyim.</span>
-        </label>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:8px;">
-          <input type="radio" name="healthDeclRadio" id="healthDeclHas" style="margin-top:2px; flex-shrink:0;" onchange="toggleHealthDeclDetails()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Bildirmem gereken bir sağlık durumum var.</span>
-        </label>
-        <textarea id="healthDeclDetails" class="admin-textarea" style="display:none; width:100%; min-height:60px;" placeholder="Kısaca açıkla (örn: diz sakatlığı, tansiyon vb.)"></textarea>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
-          <input type="checkbox" id="healthConsentCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Sağlık beyanımın, kilo/ölçüm bilgilerimin ve postür/ilerleme fotoğraflarımın antrenman programımın hazırlanması ve takibi amacıyla kaydedilmesine <b>açık rıza veriyorum</b>. Bu onayı Ayarlar'dan istediğim zaman geri alabilirim. <span style="color:var(--muted);">(Sağlık durumu bildireceksen gerekli; aksi halde isteğe bağlı.)</span></span>
-        </label>
-        <div id="healthConsentWarning" style="display:none; font-size:11.5px; color:#e2664e; margin-top:8px;">Sağlık durumunu kaydedebilmemiz için yukarıdaki onay kutusunu işaretlemen gerekiyor.</div>
-      </div>
-
-      <div class="card" style="margin-bottom:14px;">
-        <div class="card-label">FOTOĞRAF KULLANIM İZNİ <span style="color:var(--muted); font-weight:400;">(opsiyonel)</span></div>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
-          <input type="checkbox" id="photoConsentCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Postür/ilerleme fotoğraflarımın, salonun sosyal medya ve tanıtım materyallerinde kullanılmasına izin veriyorum. Bu izni istediğim zaman geri çekebilirim.</span>
-        </label>
-      </div>
-
-      <div class="card" style="margin-bottom:14px;">
+        <div class="card-label">1 · ÜYELİK SÖZLEŞMESİ</div>
+        <div id="gateContractText" style="max-height:220px; overflow-y:auto; font-size:12px; color:var(--chalk); line-height:1.8; margin-bottom:12px; padding-right:4px;"></div>
         <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
           <input type="checkbox" id="contractAcceptCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
           <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Üyelik Sözleşmesi'ni okudum, anladım ve kabul ediyorum.</span>
         </label>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-top:12px;">
+      </div>
+
+      <!-- 2) AYDINLATMA — bilgilendirmedir, onay/rıza değildir -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-label">2 · KİŞİSEL VERİLER HAKKINDA AYDINLATMA METNİ</div>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">Bu metin seni bilgilendirmek içindir; bir onay ya da rıza değildir.</div>
+        <div id="gateNoticeText" style="max-height:220px; overflow-y:auto; font-size:12px; color:var(--chalk); line-height:1.8; margin-bottom:12px; padding-right:4px;"></div>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
           <input type="checkbox" id="kvkkReadCheckbox" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">KVKK Aydınlatma Metni'ni okudum, kişisel verilerimin işlenmesi hakkında bilgilendirildim. <a href="privacy-policy.html" target="_blank" rel="noopener" style="color:var(--brass);">Gizlilik Politikası</a></span>
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Aydınlatma Metni'ni okudum, kişisel verilerimin işlenmesi hakkında bilgilendirildim. <a href="privacy-policy.html" target="_blank" rel="noopener" style="color:var(--brass);">Ayrı sayfada aç</a></span>
         </label>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-label">SAĞLIK BEYANI <span style="color:var(--muted); font-weight:400;">(isteğe bağlı)</span></div>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:10px;">
+          <input type="radio" name="healthDeclRadio" id="healthDeclNone" checked style="margin-top:2px; flex-shrink:0;" onchange="toggleHealthDeclDetails()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Bildirmek istediğim bir sağlık durumu yok.</span>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:8px;">
+          <input type="radio" name="healthDeclRadio" id="healthDeclHas" style="margin-top:2px; flex-shrink:0;" onchange="toggleHealthDeclDetails()">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Bildirmek istediğim bir sağlık durumum var.</span>
+        </label>
+        <textarea id="healthDeclDetails" class="admin-textarea" style="display:none; width:100%; min-height:60px;" placeholder="Kısaca açıkla (örn: diz sakatlığı, tansiyon vb.)"></textarea>
+        <div id="healthConsentWarning" style="display:none; font-size:11.5px; color:#e2664e; margin-top:8px;">Sağlık durumunu kaydedebilmemiz için aşağıdaki "Sağlık verilerim" rızasını işaretlemen gerekiyor. İstemiyorsan yukarıdan "yok" seçeneğini işaretle.</div>
+      </div>
+
+      <!-- 3) AÇIK RIZALAR — her biri ayrı, önceden işaretli değil -->
+      <div class="card" style="margin-bottom:14px; border-color:var(--brass);">
+        <div class="card-label">3 · AÇIK RIZA BEYANLARI</div>
+        <div style="font-size:11px; color:var(--muted); line-height:1.6; margin-bottom:12px;">Aşağıdaki rızalar sözleşmeden ve aydınlatma metninden <b style="color:var(--chalk);">bağımsızdır</b>. Her biri ayrı ayrı sorulur, hiçbiri önceden işaretli değildir ve hepsini Ayarlar → İzinlerim bölümünden dilediğin zaman geri alabilirsin.</div>
+        <div id="gateConsentList"></div>
       </div>
 
       <button class="btn btn-brass btn-full" id="contractAcceptBtn" disabled style="opacity:0.4;" onclick="acceptContract()">Onaylıyorum, Devam Et</button>
@@ -785,7 +843,7 @@
           <input type="file" id="progressPhotoInput" accept="image/*" style="display:none" onchange="handleProgressPhoto(event)">
           <button class="btn btn-ghost" onclick="document.getElementById('progressPhotoInput').click()">📷</button>
         </div>
-        <img id="progressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
+        <img alt="" id="progressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
         <button class="btn btn-brass btn-full" onclick="addProgressEntry()">+ Ölçüm Ekle</button>
       </div>
 
@@ -972,15 +1030,21 @@
 
       <div class="section-title">İzinlerim</div>
       <div class="card">
+        <div style="font-size:11px; color:var(--muted); line-height:1.6; margin-bottom:12px;">Verdiğin açık rızaları buradan dilediğin zaman geri alabilir ya da yeniden verebilirsin. İşareti kaldırmak rızayı geri alır.</div>
         <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:12px;">
-          <input type="checkbox" id="settingsHealthConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Sağlık beyanımın ve ölçüm/postür bilgilerimin kaydedilmesine açık rızam var.</span>
+          <input type="checkbox" id="settingsHealthConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents('health')">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;"><b>Sağlık verilerim</b><br>Sağlık beyanımın, kilo/ölçülerimin ve postür/ilerleme fotoğraflarımın kaydedilmesine açık rızam var.<br><span style="color:var(--muted); font-size:11px;">Geri alırsan kayıtlı sağlık beyanın, ölçümlerin, kilo kayıtların ve postür fotoğrafların silinir.</span></span>
         </label>
-        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
-          <input type="checkbox" id="settingsPhotoConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents()">
-          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;">Fotoğraflarımın salonun sosyal medya ve tanıtımında kullanılmasına izin veriyorum.</span>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:12px;">
+          <input type="checkbox" id="settingsPhotoConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents('photo')">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;"><b>Fotoğraflarımın tanıtımda kullanılması</b><br>Fotoğraflarımın salonun sosyal medya ve tanıtım materyallerinde kullanılmasına açık rızam var.</span>
         </label>
-        <div id="consentSaveMsg" style="font-size:11.5px; color:var(--muted); margin-top:10px;">İşareti kaldırdığında izin geri alınır. Sağlık iznini geri alırsan kayıtlı sağlık beyanın silinir.</div>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; margin-bottom:12px;">
+          <input type="checkbox" id="settingsMarketingConsent" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="updateMyConsents('marketing')">
+          <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;"><b>Kampanya ve tanıtım iletileri</b><br>Kampanya ve tanıtım iletilerinin telefonuma gönderilmesine onayım var.</span>
+        </label>
+        <div style="font-size:11px; color:var(--muted); line-height:1.6; padding-top:10px; border-top:1px solid var(--line);"><b style="color:var(--chalk);">Verilerin yurt dışındaki sunucularda saklanması:</b> uygulamanın çalışması için gereklidir. Bu rızayı geri almak için aşağıdan hesabını ve verilerini silebilirsin.</div>
+        <div id="consentSaveMsg" style="font-size:11.5px; color:var(--muted); margin-top:10px;"></div>
       </div>
 
       <div class="card">
@@ -1112,6 +1176,7 @@
             <div style="font-size:10.5px; color:var(--brass); font-weight:600; margin-bottom:4px;">🎂 BUGÜN DOĞUM GÜNÜ OLANLAR</div>
             <div id="homeBirthdayList"></div>
           </div>
+          <div id="homeLegalWarning" style="display:none; margin-bottom:10px; padding:10px 12px; border:1px solid var(--red); border-radius:10px; font-size:12px; color:var(--chalk); line-height:1.6; cursor:pointer;" onclick="openAdminSettings()">⚠️ <b>Veri sorumlusu bilgileri eksik.</b> Üyelere gösterilen aydınlatma metninde işletme adı, adres ve e-posta boş görünüyor. Doldurmak için dokun (Ayarlar).</div>
           <div id="homePasswordResetSection" style="display:none; margin-bottom:10px;">
             <div style="font-size:10.5px; color:var(--red); font-weight:600; margin-bottom:4px;">🔑 ŞİFRE SIFIRLAMA TALEPLERİ</div>
             <div id="homePasswordResetList"></div>
@@ -1365,7 +1430,7 @@
       </div>
 
       <div id="photoLightbox" onclick="closePhotoLightbox()" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.9); z-index:70; align-items:center; justify-content:center; padding:20px;">
-        <img id="photoLightboxImg" style="max-width:100%; max-height:100%; border-radius:10px;">
+        <img alt="" id="photoLightboxImg" style="max-width:100%; max-height:100%; border-radius:10px;">
       </div>
 
       <div id="timePickerOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:76; align-items:flex-end; justify-content:center;" onclick="if(event.target===this) closeTimePicker();">
@@ -1472,7 +1537,7 @@
             <input type="file" id="adminProgressPhotoInput" accept="image/*" style="display:none" onchange="handleAdminProgressPhoto(event)">
             <button class="btn btn-ghost" onclick="document.getElementById('adminProgressPhotoInput').click()">📷</button>
           </div>
-          <img id="adminProgressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
+          <img alt="" id="adminProgressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
           <button class="btn btn-brass btn-full" onclick="adminAddProgressEntry()">+ Kilo Kaydı Ekle</button>
         </div>
 
@@ -1763,6 +1828,35 @@
           <div id="adminPasswordChangeMsg" style="font-size:11.5px; margin-top:8px; text-align:center;"></div>
         </div>
 
+        <div class="card" id="backupCard" style="margin-bottom:14px;">
+          <div class="card-label">YEDEK</div>
+          <div style="font-size:11.5px; color:var(--muted); line-height:1.6; margin-bottom:10px;">Tüm üye ve salon verilerinin bir kopyasını dosya olarak indirir. Dosya kişisel veri içerir; güvenli bir yerde sakla ve kimseyle paylaşma. Ayda en az bir kez yedek alman önerilir.</div>
+          <button class="btn btn-ghost btn-full" onclick="downloadBackup()">💾 Yedeği indir</button>
+          <div id="backupMsg" style="font-size:11.5px; margin-top:8px; color:var(--muted);"></div>
+        </div>
+
+        <div class="card" id="legalInfoCard" style="margin-bottom:14px;">
+          <div class="card-label">VERİ SORUMLUSU BİLGİLERİ</div>
+          <div style="font-size:11.5px; color:var(--muted); line-height:1.6; margin-bottom:10px;">Bu bilgiler üyelere gösterilen sözleşme ve aydınlatma metninde yer alır. Boş bırakılırsa metinler eksik kalır.</div>
+          <input type="text" id="legalNameInput" class="calc-input" style="width:100%; margin-bottom:8px;" placeholder="İşletmenin resmi adı / unvanı">
+          <input type="text" id="legalAddressInput" class="calc-input" style="width:100%; margin-bottom:8px;" placeholder="Adres">
+          <input type="text" id="legalEmailInput" class="calc-input" style="width:100%; margin-bottom:8px;" placeholder="Başvuru e-postası">
+          <input type="tel" id="legalPhoneInput" class="calc-input" style="width:100%; margin-bottom:10px;" placeholder="Telefon (isteğe bağlı)">
+          <button class="btn btn-brass btn-full" onclick="saveLegalInfo()">Kaydet</button>
+          <div id="legalInfoMsg" style="font-size:11.5px; margin-top:8px; color:var(--muted);"></div>
+        </div>
+
+        <div class="card" id="secureModeCard" style="margin-bottom:14px;">
+          <div class="card-label">VERİ GÜVENLİĞİ</div>
+          <div id="secureModeStatus" style="font-size:12px; color:var(--chalk); line-height:1.6; margin-bottom:10px;"></div>
+          <div id="secureModeForm" style="display:none;">
+            <div class="auth-field" style="margin-bottom:10px;"><span class="auth-icon">🔒</span><input type="password" id="secureModePassword" class="auth-input" placeholder="Yönetici şifren" autocomplete="current-password"></div>
+            <button class="btn btn-brass btn-full" id="secureModeBtn" onclick="startSecureMigration()">Güvenli moda geç</button>
+          </div>
+          <div id="secureModeMsg" style="font-size:11.5px; margin-top:8px; color:var(--muted);"></div>
+          <div id="secureModeCodes" style="display:none; margin-top:10px;"></div>
+        </div>
+
         <div class="card" id="loginLogCard" style="margin-bottom:14px;">
           <div class="card-label">GİRİŞ KAYITLARI <span style="color:var(--muted); font-weight:400;">(son 30)</span></div>
           <div id="loginLogList" style="font-size:11.5px; max-height:220px; overflow-y:auto;"></div>
@@ -1867,9 +1961,17 @@
     appId: "1:246112140718:web:dcac0d734605bb77ed5c3f"
   };
   console.log('%cTT FITNESS BUILD: 2026-11-11-v10', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
+  // Testlerde gerçek Firebase yerine yerel emülatöre bağlanılır (canlı veriye dokunulmaz)
+  const USE_EMULATOR = !!window.__TTF_EMULATOR;
+  if(USE_EMULATOR) firebaseConfig.projectId = 'demo-ttfitness';
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const storage = firebase.storage();
+  if(USE_EMULATOR){
+    db.useEmulator('127.0.0.1', 8080);
+    firebase.auth().useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
+    storage.useEmulator('127.0.0.1', 9199);
+  }
   let cloudReady = false;
 
   // Bir fotoğrafı (base64 data URL olarak elde edilmiş) Firebase Storage'a yükleyip,
@@ -1878,7 +1980,9 @@
   async function uploadPhotoToStorage(dataUrl, folder){
     if(!dataUrl || !dataUrl.startsWith('data:')) return dataUrl; // zaten bir URL ise (önceden yüklenmiş) olduğu gibi bırak
     try{
-      const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+      // Güvenli modda herkes yalnızca kendi klasörüne yükleyebilir (storage.rules)
+      const base = (secureMode && secureSession) ? `u/${secureSession.uid}/${folder}` : folder;
+      const path = `${base}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
       const ref = storage.ref().child(path);
       await ref.putString(dataUrl, 'data_url');
       return await ref.getDownloadURL();
@@ -1955,7 +2059,7 @@
   }
 
   // Kullanıcının yazdığı serbest metinleri (mesaj, öğün adı, not vb.) ekrana HTML olarak
-  // basmadan önce güvenli hale getirir — aksi halde mesaja yazılan <img onerror=...> gibi
+  // basmadan önce güvenli hale getirir — aksi halde mesaja yazılan <img alt="" onerror=...> gibi
   // bir içerik yönetici ekranında kod olarak çalışabiliyordu (XSS).
   function escapeHtml(value){
     return String(value == null ? '' : value)
@@ -1980,7 +2084,8 @@
     const el = document.getElementById('cloudSaveIndicator');
     const dot = document.getElementById('cloudSaveDot');
     const text = document.getElementById('cloudSaveText');
-    if(el) el.style.display = 'flex';
+    const loggedOut = document.getElementById('logged-out-screen');
+    if(el && !(loggedOut && loggedOut.style.display !== 'none')) el.style.display = 'flex'; // giriş ekranında gösterme
     if(dot) dot.style.background = '#CE997A';
     if(text) text.textContent = 'Kaydediliyor…';
   }
@@ -2028,16 +2133,20 @@
   // Tek bir bulut belgesiyle eşitlenen bir veri yapısı.
   //  kind 'object' → belgenin her alanı objenin bir anahtarı (genelde üye adı)
   //  kind 'array'  → belge { items: [...] } şeklinde
-  function createDocSync(docRef, ref, kind, label, customApply){
+  // access verilirse veri sabit bir objeden değil, { leaves(), apply(), readOnly } arayüzünden okunup yazılır
+  // (üye belgeleri gibi, birden çok veri yapısına dağılmış kayıtlar için).
+  function createDocSync(docRef, ref, kind, label, customApply, access){
     const synced = new Map(); // anahtar -> bulutta olduğunu bildiğimiz son değer (kanonik metin)
     let docExists = false;
     function localLeaves(){
       const out = new Map();
+      if(access){ access.leaves().forEach((value, key) => { if(key) out.set(key, { value, json: canonForCloud(value) }); }); return out; }
       if(kind === 'array'){ out.set('items', { value: ref, json: canonForCloud(ref) }); }
       else { Object.keys(ref).forEach(k => { if(k && ref[k] !== undefined) out.set(k, { value: ref[k], json: canonForCloud(ref[k]) }); }); }
       return out;
     }
     function applyRemote(key, raw){
+      if(access){ access.apply(key, raw); return; }
       if(customApply){ customApply(key, raw); return; }
       if(kind === 'array'){
         const arr = desanitizeFromFirestore(raw) || [];
@@ -2050,7 +2159,7 @@
     function ingest(data, isInitial){
       docExists = true;
       data = data || {};
-      if(isInitial && kind === 'object' && !customApply){ Object.keys(ref).forEach(k => delete ref[k]); }
+      if(isInitial && kind === 'object' && !customApply && !access){ Object.keys(ref).forEach(k => delete ref[k]); }
       const local = localLeaves();
       let changed = false;
       const remoteKeys = kind === 'array' ? ('items' in data ? ['items'] : []) : Object.keys(data);
@@ -2061,7 +2170,7 @@
         if(rJson === synced.get(key)) return;
         const l = local.get(key);
         const lJson = l ? l.json : undefined;
-        if(isInitial || lJson === synced.get(key)){
+        if(isInitial || (access && access.readOnly) || lJson === synced.get(key)){
           if(lJson !== rJson){ applyRemote(key, has ? data[key] : undefined); changed = true; }
         }
         if(rJson === undefined) synced.delete(key); else synced.set(key, rJson);
@@ -2073,8 +2182,9 @@
       if(kind === 'array'){ ref.length = 0; ref.push(...(value || [])); }
       else { Object.keys(ref).forEach(k => delete ref[k]); Object.assign(ref, value || {}); }
     }
+    let disposed = false;
     async function tick(){
-      if(!cloudReady) return;
+      if(!cloudReady || disposed || (access && access.readOnly)) return;
       const local = localLeaves();
       const args = []; const sent = []; const createPayload = {};
       local.forEach((l, key) => {
@@ -2109,14 +2219,18 @@
         setTimeout(() => { sent.forEach(([key, prev]) => { if(prev === undefined) synced.delete(key); else synced.set(key, prev); }); }, 8000);
       }
     }
-    setInterval(tick, 1000);
+    const timer = setInterval(tick, 1000);
     registerAutosaveFlusher(tick);
-    return { ingest, importLegacy, tick };
+    function dispose(){
+      disposed = true; clearInterval(timer);
+      const i = autosaveFlushers.indexOf(tick); if(i !== -1) autosaveFlushers.splice(i, 1);
+    }
+    return { ingest, importLegacy, tick, dispose };
   }
 
   // Her kaydı ayrı bir belge olan koleksiyonlar (üyeler, antrenörler) için eşitleme:
   // sadece değişen kaydın değişen alanları yazılır.
-  function createCollectionSync(arr, collectionName, withDefaults){
+  function createCollectionSync(arr, collectionName, withDefaults, readOnly){
     const synced = new Map(); // belge id -> { alan: kanonik metin }
     function fieldsOf(obj){
       const out = {};
@@ -2156,6 +2270,7 @@
       return changed;
     }
     async function tick(){
+      if(readOnly) return;
       if(!cloudReady) return;
       const batch = db.batch();
       let count = 0;
@@ -2226,6 +2341,543 @@
     return out;
   }
 
+  // ==================== GÜVENLİ MOD ====================
+  // Eski düzende uygulama veritabanına "anonim" bağlanıp herkesin verisini indiriyor, giriş kontrolünü
+  // telefonda yapıyordu. Güvenli modda:
+  //  • Giriş Firebase Authentication ile yapılır (şifreyi Firebase doğrular ve saklar).
+  //  • Her üyenin verisi kendi belgelerinde durur:
+  //      member_self/{id}    üyenin kendi yazdıkları (öğün, mesaj, profil, onaylar, sağlık beyanı…)
+  //      member_admin/{id}   salonun üye hakkında tuttukları (program, paket, ödeme, ölçüm, yoklama…) — üye sadece okur
+  //      member_private/{id} yalnızca yönetimin gördüğü notlar
+  //  • Kimin neyi okuyup yazabileceğini veritabanı kuralları (firestore.rules) SUNUCUDA zorlar;
+  //    bir üyenin cihazına başka üyelerin verisi hiç inmez.
+  // Geçiş, tam yetkili yöneticinin Ayarlar'daki "Güvenli moda geç" adımıyla başlar; o zamana kadar eski düzen çalışır.
+  let secureMode = false;
+  let secureSession = null; // { uid, memberId, role }
+  const SECURE_EMAIL_DOMAIN = 'uye.ttfitness.app';
+  const isSecureAdmin = () => secureMode && secureSession && secureSession.role === 'admin';
+  const isSecureMember = () => secureMode && secureSession && secureSession.role !== 'admin';
+
+  // Telefon/kullanıcı adından giriş anahtarı: "0542 249 32 27", "+90 542 249 32 27", "5422493227" → "05422493227"
+  function phoneKeyOf(phone){
+    let k = String(phone || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if(/^\d+$/.test(k)){
+      if(k.length === 12 && k.startsWith('90')) k = '0' + k.slice(2);
+      else if(k.length === 10 && k.startsWith('5')) k = '0' + k;
+    }
+    return k;
+  }
+  // Şifre sıfırlanınca hesap "yeni nesil" bir adresle yeniden açılır (g1, g2…); eski hesap yetkisini kaybeder
+  const loginEmailFor = (phoneKey, gen) => phoneKey + (gen ? '.g' + gen : '') + '@' + SECURE_EMAIL_DOMAIN;
+  function randomTempCode(){
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => alphabet[b % alphabet.length]).join('');
+  }
+  const newActivationCode = () => secureMode ? randomTempCode() : String(Math.floor(100000 + Math.random() * 900000));
+
+  // Üye adına göre tutulan verilerin hangi belgeye ait olduğu
+  function memberFieldDefs(){
+    return {
+      self: [
+        ['memberMessages', memberMessages, 'byName'], ['adminMessageUnread', adminMessageUnread, 'byName'],
+        ['classConfirmations', classConfirmations, 'composite'],
+        ['contractAccepted', contractAccepted, 'byName'], ['contractAcceptedVersion', contractAcceptedVersion, 'byName'],
+        ['contractAcceptedDate', contractAcceptedDate, 'byName'], ['emergencyContacts', emergencyContacts, 'byName'],
+        ['healthDeclarations', healthDeclarations, 'byName'], ['parentalConsents', parentalConsents, 'byName'],
+        ['photoConsent', photoConsent, 'byName'], ['consentRecords', consentRecords, 'byName'],
+        ['goalNotes', goalNotes, 'byName'], ['memberProfiles', memberProfiles, 'byName'],
+        ['memberMeals', memberMeals, 'byName'], ['progressEntries', progressEntries, 'byName'],
+        ['mealResetMonth', mealResetMonth, 'byName'],
+        ['pendingCreditRequests', pendingCreditRequests, 'arrayByMember'], ['sessionRequests', sessionRequests, 'arrayByMember'],
+      ],
+      admin: [
+        ['memberPrograms', memberPrograms, 'byName'], ['memberPackages', memberPackages, 'byName'],
+        ['memberPayments', memberPayments, 'byName'], ['attendanceLog', attendanceLog, 'composite'],
+        ['memberMealTargets', memberMealTargets, 'byName'], ['mealReminders', mealReminders, 'byName'],
+        ['mealPhotoComments', mealPhotoComments, 'composite'], ['memberWorkoutSequences', memberWorkoutSequences, 'byName'],
+        ['memberWeeklyLimits', memberWeeklyLimits, 'byName'], ['extraClassDays', extraClassDays, 'byName'],
+        ['referrals', referrals, 'byName'], ['memberDiscounts', memberDiscounts, 'byName'],
+        ['seasonBaselinePoints', seasonBaselinePoints, 'byName'], ['memberMeasurements', memberMeasurements, 'byName'],
+        ['posturePhotos', posturePhotos, 'byName'], ['memberTrainerNotes', memberTrainerNotes, 'byName'],
+        ['memberAnnouncements', memberAnnouncements, 'byName'],
+      ],
+      priv: [ ['memberNotes', memberNotes, 'byName'] ],
+    };
+  }
+  function readMemberField(ref, type, name){
+    if(type === 'composite'){
+      const out = {}; let any = false;
+      Object.keys(ref).forEach(k => { if(k.startsWith(name + '|')){ out[k.slice(name.length + 1)] = ref[k]; any = true; } });
+      return any ? out : undefined;
+    }
+    if(type === 'arrayByMember'){
+      const list = ref.filter(x => x && x.member === name);
+      return list.length ? list : undefined;
+    }
+    return ref[name];
+  }
+  function writeMemberField(ref, type, name, value){
+    if(type === 'composite'){
+      Object.keys(ref).forEach(k => { if(k.startsWith(name + '|')) delete ref[k]; });
+      if(value) Object.keys(value).forEach(k => { ref[name + '|' + k] = value[k]; });
+    } else if(type === 'arrayByMember'){
+      for(let i = ref.length - 1; i >= 0; i--){ if(ref[i] && ref[i].member === name) ref.splice(i, 1); }
+      if(Array.isArray(value)) ref.push(...value);
+    } else if(value === undefined){ delete ref[name]; }
+    else { ref[name] = value; }
+  }
+  function memberDocAccess(getName, defs, readOnly){
+    return {
+      readOnly,
+      leaves(){
+        const name = getName(); const out = new Map();
+        defs.forEach(([field, ref, type]) => { const v = readMemberField(ref, type, name); if(v !== undefined) out.set(field, v); });
+        return out;
+      },
+      apply(field, raw){
+        const d = defs.find(x => x[0] === field);
+        if(d) writeMemberField(d[1], d[2], getName(), raw === undefined ? undefined : desanitizeFromFirestore(raw));
+      },
+    };
+  }
+
+  // Yönetici: tüm üyeler için; üye: yalnızca kendisi için belge eşitleyicileri
+  const memberSyncs = {};        // memberId -> { holder, self, admin, priv }
+  const pendingMemberDocs = { member_self: {}, member_admin: {}, member_private: {} }; // eşitleyicisi henüz kurulmamış üyelerin gelen belgeleri
+  const memberDocKinds = { member_self: 'self', member_admin: 'admin', member_private: 'priv' };
+  function ensureMemberSyncs(){
+    if(!secureMode || !secureSession) return;
+    const admin = secureSession.role === 'admin';
+    const wanted = members.filter(m => m._id && (admin || m._id === secureSession.memberId));
+    let defs = null;
+    wanted.forEach(m => {
+      if(memberSyncs[m._id]){ memberSyncs[m._id].holder.name = m.name; return; }
+      defs = defs || memberFieldDefs();
+      const holder = { name: m.name };
+      const getName = () => holder.name;
+      const entry = { holder,
+        self: createDocSync(db.collection('member_self').doc(m._id), null, 'object', 'üye verisi', null, memberDocAccess(getName, defs.self, false)),
+        admin: createDocSync(db.collection('member_admin').doc(m._id), null, 'object', 'üye kaydı', null, memberDocAccess(getName, defs.admin, !admin)),
+        priv: admin ? createDocSync(db.collection('member_private').doc(m._id), null, 'object', 'yönetim notu', null, memberDocAccess(getName, defs.priv, false)) : null,
+      };
+      memberSyncs[m._id] = entry;
+      Object.keys(memberDocKinds).forEach(coll => {
+        const waiting = pendingMemberDocs[coll][m._id];
+        const sync = entry[memberDocKinds[coll]];
+        if(waiting !== undefined && sync){ sync.ingest(waiting, true); delete pendingMemberDocs[coll][m._id]; }
+      });
+    });
+    Object.keys(memberSyncs).forEach(id => { if(!wanted.some(m => m._id === id)) disposeMemberSyncs(id); });
+  }
+  function disposeMemberSyncs(id){
+    const e = memberSyncs[id];
+    if(!e) return;
+    [e.self, e.admin, e.priv].forEach(s => { if(s) s.dispose(); });
+    delete memberSyncs[id];
+  }
+  function ingestMemberDoc(coll, id, data, removed){
+    const e = memberSyncs[id];
+    const sync = e && e[memberDocKinds[coll]];
+    if(removed){ delete pendingMemberDocs[coll][id]; return sync ? sync.ingest({}, false) : false; }
+    if(!sync){ pendingMemberDocs[coll][id] = data || {}; return false; }
+    return sync.ingest(data || {}, false);
+  }
+
+  // Duyurular: tam liste yalnızca yönetimde durur. Her üyenin kendi belgesine yalnızca ONA yönelik
+  // duyurular (hedef bilgisi çıkarılmış olarak) kopyalanır — başkasına özel duyuru üyeye hiç gitmez.
+  let memberAnnouncements = {}; // { memberName: [{ id, target:'all', message, date }] }
+  function recomputeMemberAnnouncements(){
+    if(!isSecureAdmin()) return;
+    members.filter(m => m.role !== 'admin').forEach(m => {
+      const mine = announcements.filter(a => isAnnouncementForMe(a, m.name)).map(a => ({ id: a.id, target: 'all', message: a.message, date: a.date }));
+      if(stableStringify(mine) !== stableStringify(memberAnnouncements[m.name] || [])){
+        if(mine.length) memberAnnouncements[m.name] = mine; else delete memberAnnouncements[m.name];
+      }
+    });
+  }
+  // Sıralama: üyeler birbirinin verisini göremediği için, yönetici cihazı maskelenmiş adlar ve
+  // puanlardan oluşan bir özet yayınlar; üye ekranı sıralamayı bu özetten çizer.
+  let leaderboardShared = {}; // { rows: [{ id, n: 'Ali K.', p: puan }] }
+  function updateLeaderboardSnapshot(){
+    if(!isSecureAdmin()) return;
+    const rows = members.filter(m => m.role !== 'admin' && m._id).map(m => ({ id: m._id, n: maskName(m.name), p: getSeasonPoints(m.name) }));
+    if(stableStringify(rows) !== stableStringify(leaderboardShared.rows || [])) leaderboardShared.rows = rows;
+  }
+  function getLeaderboardRows(){
+    if(isSecureMember()){
+      return (leaderboardShared.rows || []).map(r => r.id === secureSession.memberId
+        ? { name: currentMemberName, points: getSeasonPoints(currentMemberName) }
+        : { name: r.n, points: r.p, masked: true });
+    }
+    return members.filter(m => m.role !== 'admin').map(m => ({ name: m.name, points: getSeasonPoints(m.name) }));
+  }
+  function syncMemberViewOfAnnouncements(){
+    if(!isSecureMember()) return;
+    announcements.length = 0;
+    announcements.push(...(memberAnnouncements[currentMemberName] || []));
+  }
+
+  // ---- Giriş hesapları ----
+  let provisioningApp = null;
+  function provisioningAuth(){
+    // Yönetici oturumunu bozmadan başka bir kullanıcı hesabı açabilmek için ikinci bir bağlantı
+    if(!provisioningApp){
+      provisioningApp = firebase.initializeApp(firebaseConfig, 'hesap-acma');
+      if(USE_EMULATOR) provisioningApp.auth().useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
+    }
+    return provisioningApp.auth();
+  }
+  // Üye için (yeniden) giriş hesabı açar: Authentication kullanıcısı + yetki belgesi + giriş dizini.
+  // Şifre sıfırlamada da kullanılır: yeni hesap açılır, eskisinin yetki belgesi silinir.
+  async function provisionMemberAccount(member, password){
+    if(!member._id) await membersSync.tick();
+    if(!member._id) throw new Error('Üye kaydı henüz oluşmadı');
+    const key = phoneKeyOf(member.phone);
+    if(!key) throw new Error('Telefon numarası / kullanıcı adı geçersiz');
+    if(members.some(o => o !== member && phoneKeyOf(o.phone) === key)) throw new Error('Bu telefon numarası başka bir üyede kayıtlı: ' + member.phone);
+    const idxRef = db.collection('login_index').doc(key);
+    const idxSnap = await idxRef.get();
+    let gen = idxSnap.exists ? ((idxSnap.data().gen || 0) + 1) : 0;
+    const auth2 = provisioningAuth();
+    let cred = null;
+    for(let attempt = 0; attempt < 6 && !cred; attempt++){
+      try{ cred = await auth2.createUserWithEmailAndPassword(loginEmailFor(key, gen), password); }
+      catch(e){ if(e.code === 'auth/email-already-in-use'){ gen++; } else { throw e; } }
+    }
+    if(!cred) throw new Error('Giriş hesabı açılamadı');
+    const uid = cred.user.uid;
+    await auth2.signOut();
+    const oldUid = member.uid;
+    await db.collection('users').doc(uid).set({ memberId: member._id, role: member.role === 'admin' ? 'admin' : 'member', phoneKey: key });
+    await idxRef.set({ gen });
+    if(oldUid && oldUid !== uid) await db.collection('users').doc(oldUid).delete().catch(() => null);
+    member.uid = uid;
+    delete member.pw; delete member.password;
+  }
+  // Yönetici yeni üye(ler) eklediğinde giriş hesaplarını açar
+  async function provisionNewMembers(list){
+    if(!secureMode) return;
+    for(const m of list){
+      try{
+        await provisionMemberAccount(m, m.activationCode);
+      }catch(err){
+        console.error('Giriş hesabı açılamadı:', err);
+        alert(`${m.name} için giriş hesabı açılamadı: ${err.message}\nÜye kartındaki "Şifreyi Değiştir" ile tekrar deneyebilirsin.`);
+      }
+    }
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  }
+
+  function clearStateForSecureLoad(){
+    const defs = memberFieldDefs();
+    [...defs.self, ...defs.admin, ...defs.priv].forEach(([, ref, type]) => {
+      if(Array.isArray(ref)) ref.length = 0; else Object.keys(ref).forEach(k => delete ref[k]);
+    });
+    members.length = 0;
+    [announcements, financeEntries, passwordResetRequests].forEach(a => { a.length = 0; });
+    [loginLog, loginLocks].forEach(o => Object.keys(o).forEach(k => delete o[k]));
+  }
+  function ingestTrainerDoc(doc){
+    const existing = trainers.find(t => !t._id && t.name === (doc.data() || {}).name);
+    if(existing) existing._id = doc.id;
+    trainersSync.ingestDoc(doc.id, doc.data(), false);
+    if(existing) Object.assign(existing, desanitizeFromFirestore(doc.data()));
+  }
+  const secureErr = (what) => (err) => console.error('Canlı eşitleme (' + what + ') hatası:', err);
+
+  // Giriş yapan kişinin görmeye yetkili olduğu veriyi yükler ve canlı dinlemeye başlar
+  async function loadSecureData(){
+    clearStateForSecureLoad();
+    const admin = secureSession.role === 'admin';
+    const myId = secureSession.memberId;
+    const appData = db.collection('app_data');
+    membersSync = createCollectionSync(members, 'members', applyMemberDefaults);
+    trainersSync = createCollectionSync(trainers, 'trainers', null, !admin);
+    const sharedRefs = admin
+      ? [[announcements, 'announcements', 'array'], [financeEntries, 'financeEntries', 'array'], [priceSettings, 'priceSettings', 'object'], [appMeta, 'appMeta', 'object'], [leaderboardShared, 'leaderboardShared', 'object']]
+      : [[priceSettings, 'priceSettings', 'object'], [appMeta, 'appMeta', 'object'], [leaderboardShared, 'leaderboardShared', 'object']];
+    const readOnlyAccess = (ref) => ({ readOnly: true,
+      leaves(){ const out = new Map(); Object.keys(ref).forEach(k => { if(ref[k] !== undefined) out.set(k, ref[k]); }); return out; },
+      apply(key, raw){ if(raw === undefined) delete ref[key]; else ref[key] = desanitizeFromFirestore(raw); } });
+    sharedRefs.forEach(([ref, field, kind]) => {
+      appDataSyncs['state_' + field] = admin
+        ? createDocSync(appData.doc('state_' + field), ref, kind, field)
+        : createDocSync(appData.doc('state_' + field), null, 'object', field, null, readOnlyAccess(ref));
+    });
+
+    if(admin){
+      const [mSnap, tSnap, aSnap, sSnap, adSnap, pSnap, rSnap] = await Promise.all([
+        db.collection('members').get(), db.collection('trainers').get(), appData.get(),
+        db.collection('member_self').get(), db.collection('member_admin').get(), db.collection('member_private').get(),
+        db.collection('reset_requests').get(),
+      ]);
+      mSnap.forEach(doc => membersSync.ingestDoc(doc.id, doc.data(), false));
+      tSnap.forEach(ingestTrainerDoc);
+      aSnap.forEach(doc => { const s = appDataSyncs[doc.id]; if(s) s.ingest(doc.data(), true); });
+      ensureMemberSyncs();
+      sSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].self.ingest(doc.data(), true));
+      adSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].admin.ingest(doc.data(), true));
+      pSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].priv.ingest(doc.data(), true));
+      applyResetRequests(rSnap);
+    } else {
+      const [mDoc, tSnap, selfDoc, adminDoc, ...sharedDocs] = await Promise.all([
+        db.collection('members').doc(myId).get(), db.collection('trainers').get(),
+        db.collection('member_self').doc(myId).get(), db.collection('member_admin').doc(myId).get(),
+        ...sharedRefs.map(([, field]) => appData.doc('state_' + field).get()),
+      ]);
+      if(!mDoc.exists) throw new Error('uye-kaydi-yok');
+      membersSync.ingestDoc(myId, mDoc.data(), false);
+      tSnap.forEach(ingestTrainerDoc);
+      sharedDocs.forEach((snap, i) => { if(snap.exists) appDataSyncs['state_' + sharedRefs[i][1]].ingest(snap.data(), true); });
+      ensureMemberSyncs();
+      if(selfDoc.exists) memberSyncs[myId].self.ingest(selfDoc.data(), true);
+      if(adminDoc.exists) memberSyncs[myId].admin.ingest(adminDoc.data(), true);
+    }
+    const allDefs = memberFieldDefs();
+    allStateRefs = [...allDefs.self, ...allDefs.admin, ...allDefs.priv].map(([field, ref]) => [ref, field, Array.isArray(ref) ? 'array' : 'object'])
+      .concat(sharedRefs);
+    applyAppMeta();
+    syncMemberViewOfAnnouncements();
+  }
+  function startSecureListeners(){
+    const admin = secureSession.role === 'admin';
+    const myId = secureSession.memberId;
+    const changedThenRefresh = (changed) => { if(changed){ applyAppMeta(); ensureMemberSyncs(); syncMemberViewOfAnnouncements(); scheduleRemoteRefresh(); } };
+    const onTrainers = (snap) => { let c = false; snap.docChanges().forEach(ch => { if(trainersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; }); changedThenRefresh(c); };
+    db.collection('trainers').onSnapshot(onTrainers, secureErr('antrenörler'));
+    if(admin){
+      db.collection('members').onSnapshot(snap => {
+        let c = false;
+        snap.docChanges().forEach(ch => { if(membersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; });
+        changedThenRefresh(c);
+      }, secureErr('üyeler'));
+      db.collection('app_data').onSnapshot(snap => {
+        let c = false;
+        snap.docChanges().forEach(ch => { const s = appDataSyncs[ch.doc.id]; if(s && ch.type !== 'removed' && s.ingest(ch.doc.data(), false)) c = true; });
+        changedThenRefresh(c);
+      }, secureErr('ortak veri'));
+      Object.keys(memberDocKinds).forEach(coll => {
+        db.collection(coll).onSnapshot(snap => {
+          let c = false;
+          snap.docChanges().forEach(ch => { if(ingestMemberDoc(coll, ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; });
+          changedThenRefresh(c);
+        }, secureErr(coll));
+      });
+      db.collection('reset_requests').onSnapshot(snap => { applyResetRequests(snap); scheduleRemoteRefresh(); }, secureErr('şifre istekleri'));
+    } else {
+      db.collection('members').doc(myId).onSnapshot(snap => {
+        changedThenRefresh(membersSync.ingestDoc(myId, snap.exists ? snap.data() : {}, !snap.exists));
+      }, secureErr('üye kaydı'));
+      ['member_self', 'member_admin'].forEach(coll => {
+        db.collection(coll).doc(myId).onSnapshot(snap => { changedThenRefresh(ingestMemberDoc(coll, myId, snap.exists ? snap.data() : {}, !snap.exists)); }, secureErr(coll));
+      });
+      ['priceSettings', 'appMeta', 'leaderboardShared'].forEach(field => {
+        db.collection('app_data').doc('state_' + field).onSnapshot(snap => { if(snap.exists) changedThenRefresh(appDataSyncs['state_' + field].ingest(snap.data(), false)); }, secureErr(field));
+      });
+    }
+    // Yetki belgem silindiyse (yönetici şifremi sıfırladı ya da hesabımı sildi) bu cihazdaki oturumu hemen kapat.
+    // Not: Firebase, açık bir bağlantının okuma yetkisini anında kesmez (en geç oturum anahtarı yenilenince,
+    // yaklaşık 1 saat içinde keser); yazma denemeleri ise hemen reddedilir.
+    let sawOwnUserDoc = false;
+    db.collection('users').doc(secureSession.uid).onSnapshot(snap => {
+      if(snap.exists){ sawOwnUserDoc = true; return; }
+      if(sawOwnUserDoc && !snap.metadata.fromCache) forceSecureSignOut();
+    }, () => forceSecureSignOut());
+    setInterval(() => { ensureMemberSyncs(); recomputeMemberAnnouncements(); updateLeaderboardSnapshot(); }, 2000);
+  }
+  let secureSignOutStarted = false;
+  function forceSecureSignOut(){
+    if(secureSignOutStarted) return;
+    secureSignOutStarted = true;
+    memberSessionActive = false;
+    firebase.auth().signOut().catch(() => null).then(() => location.reload());
+  }
+  // Şifre sıfırlama istekleri (giriş yapmadan gönderilir; yalnızca yönetim okur)
+  function applyResetRequests(snap){
+    passwordResetRequests.length = 0;
+    snap.forEach(doc => { const d = desanitizeFromFirestore(doc.data() || {}); passwordResetRequests.push({ phone: d.phone, date: d.date, code: d.code, _rid: doc.id }); });
+  }
+  function removeResetRequestDoc(req){
+    if(secureMode && req && req._rid) db.collection('reset_requests').doc(req._rid).delete().catch(() => null);
+  }
+
+  // Oturum açıkken (ya da giriş yapınca) çağrılır: yetkiyi okur, veriyi yükler, ekranı açar
+  async function startSecureSession(typedPassword){
+    const user = firebase.auth().currentUser;
+    if(!user) return false;
+    const uSnap = await db.collection('users').doc(user.uid).get();
+    if(!uSnap.exists){ await firebase.auth().signOut(); return false; }
+    const u = uSnap.data();
+    secureSession = { uid: user.uid, memberId: u.memberId, role: u.role === 'admin' ? 'admin' : 'member' };
+    try{ await loadSecureData(); }
+    catch(err){ console.error('Veri yüklenemedi:', err); secureSession = null; await firebase.auth().signOut(); return false; }
+    const me = members.find(m => m._id === secureSession.memberId);
+    if(!me){ secureSession = null; await firebase.auth().signOut(); return false; }
+    cloudReady = true;
+    startSecureListeners();
+    if(me.role !== 'admin'){
+      if(me.status === 'pending') me.status = 'active';
+      if(typedPassword && me.activationCode && typedPassword === me.activationCode) me.mustSetPassword = true;
+    }
+    if(typedPassword){
+      const now = new Date();
+      db.collection('login_log').add({ uid: user.uid, who: me.name, ok: true, reason: me.role === 'admin' ? 'yönetici' : '', ts: now.getTime(),
+        date: toLocalDateStr(now), time: pad2(now.getHours()) + ':' + pad2(now.getMinutes()) }).catch(() => null);
+    }
+    completeLogin(me);
+    runTimeChecks();
+    return true;
+  }
+  async function secureLogin(phone, password, errorEl){
+    const key = phoneKeyOf(phone);
+    let gen = 0;
+    try{ const idx = await db.collection('login_index').doc(key).get(); if(idx.exists) gen = idx.data().gen || 0; }catch(e){}
+    try{
+      await firebase.auth().signInWithEmailAndPassword(loginEmailFor(key, gen), password);
+    }catch(e){
+      if(e.code === 'auth/too-many-requests') errorEl.textContent = 'Çok fazla hatalı deneme yapıldı. Lütfen bir süre sonra tekrar dene.';
+      else if(e.code === 'auth/network-request-failed') errorEl.textContent = 'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.';
+      else errorEl.textContent = 'Telefon numarası veya şifre hatalı.';
+      return;
+    }
+    errorEl.textContent = 'Giriş yapılıyor…';
+    const ok = await startSecureSession(password);
+    errorEl.textContent = ok ? '' : 'Bu hesap artık geçerli değil. Salon yönetimiyle iletişime geç.';
+  }
+  async function loadSecureLoginLog(){
+    if(!isSecureAdmin()) return;
+    try{
+      const snap = await db.collection('login_log').orderBy('ts', 'desc').limit(30).get();
+      Object.keys(loginLog).forEach(k => delete loginLog[k]);
+      snap.forEach(doc => { loginLog[doc.id] = desanitizeFromFirestore(doc.data()); });
+      renderLoginLog();
+    }catch(e){ console.error('Giriş kayıtları okunamadı:', e); }
+  }
+
+  // Yapılan derslerin işlenmesi (güvenli mod): yalnızca yönetici cihazı yapar; her üyenin kendi
+  // kayıt belgesinde tek işlemde (transaction) hem yoklama eklenir hem ders hakkı düşülür.
+  async function claimAttendanceSecure(claims){
+    const byMember = {};
+    claims.forEach(c => { (byMember[c.member] = byMember[c.member] || []).push(c); });
+    for(const name of Object.keys(byMember)){
+      const m = members.find(x => x.name === name);
+      if(!m || !m._id) continue;
+      const ref = db.collection('member_admin').doc(m._id);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const existing = data.attendanceLog || {};
+        const fresh = {}; let count = 0;
+        byMember[name].forEach(({ logKey, entry }) => {
+          const sub = logKey.slice(name.length + 1);
+          if(existing[sub] || fresh[sub]) return;
+          fresh[sub] = sanitizeForFirestore(entry); count++;
+        });
+        if(!count) return;
+        tx.set(ref, { attendanceLog: fresh }, { merge: true });
+        if(data.memberPackages) tx.update(ref, new firebase.firestore.FieldPath('memberPackages', 'used'), firebase.firestore.FieldValue.increment(count));
+      });
+    }
+  }
+
+  // ---- Güvenli moda geçiş (tam yetkili yönetici, bir kez) ----
+  async function migrateToSecureMode(adminPassword, onProgress){
+    const say = onProgress || (() => {});
+    if(secureMode) throw new Error('Zaten güvenli modda.');
+    const me = members.find(m => m.role === 'admin' && m.name === currentAdminName);
+    if(!me || adminTrainerScope) throw new Error('Bu işlemi yalnızca tam yetkili yönetici yapabilir.');
+    if(!(await verifyMemberPassword(me, adminPassword))) throw new Error('Yönetici şifresi hatalı.');
+    if(adminPassword.length < MIN_PASSWORD_LENGTH) throw new Error(`Önce yönetici şifreni en az ${MIN_PASSWORD_LENGTH} karakter olacak şekilde değiştir.`);
+    const keys = {};
+    members.forEach(m => {
+      const k = phoneKeyOf(m.phone);
+      if(!k) throw new Error(`${m.name}: telefon numarası / kullanıcı adı boş.`);
+      if(keys[k]) throw new Error(`Aynı telefon numarası iki kayıtta var: ${keys[k]} ve ${m.name}. Önce birini düzelt.`);
+      keys[k] = m.name;
+    });
+    say('Kayıtlar hazırlanıyor…');
+    await flushAllAutosaves();
+    await membersSync.tick();
+    // 1) Herkese giriş hesabı
+    let done = 0;
+    for(const m of members){
+      say(`Giriş hesapları açılıyor… (${++done}/${members.length})`);
+      const isMe = m === me;
+      const pw = isMe ? adminPassword : randomTempCode();
+      try{ await provisionMemberAccount(m, pw); }
+      catch(err){
+        if(err && err.code === 'auth/operation-not-allowed') throw new Error('Firebase konsolunda "E-posta/Şifre" giriş yöntemi açık değil. Önce onu aç, sonra tekrar dene.');
+        throw err;
+      }
+      if(!isMe){ m.activationCode = pw; m.mustSetPassword = true; }
+    }
+    // 2) Veriyi kişiye özel belgelere yaz
+    say('Veriler kişiye özel kayıtlara taşınıyor…');
+    secureMode = true;
+    secureSession = { uid: me.uid, memberId: me._id, role: 'admin' };
+    appDataSyncs['state_leaderboardShared'] = createDocSync(db.collection('app_data').doc('state_leaderboardShared'), leaderboardShared, 'object', 'leaderboardShared');
+    ensureMemberSyncs();
+    recomputeMemberAnnouncements();
+    updateLeaderboardSnapshot();
+    await flushAllAutosaves();
+    // 3) Bundan sonra açılan her cihaz güvenli modda başlasın
+    await db.collection('config').doc('public').set({ secure: true, v: 3, date: toLocalDateStr(new Date()) });
+    // 4) Bu cihazda yönetici olarak oturum aç
+    say('Oturum açılıyor…');
+    const myIdx = await db.collection('login_index').doc(phoneKeyOf(me.phone)).get();
+    await firebase.auth().signInWithEmailAndPassword(loginEmailFor(phoneKeyOf(me.phone), myIdx.exists ? (myIdx.data().gen || 0) : 0), adminPassword);
+    try{ localStorage.removeItem('ttf_session'); }catch(e){}
+    return members.filter(m => m !== me).map(m => ({ name: m.name, phone: m.phone, code: m.activationCode }));
+  }
+
+  function renderSecureModeCard(){
+    const card = document.getElementById('secureModeCard');
+    if(!card) return;
+    card.style.display = adminTrainerScope ? 'none' : 'block';
+    const status = document.getElementById('secureModeStatus');
+    const form = document.getElementById('secureModeForm');
+    if(secureMode){
+      status.innerHTML = '✅ <b>Güvenli mod açık.</b> Giriş Firebase üzerinden yapılıyor ve her üyenin verisi kendi kayıtlarında duruyor. Korumanın tam olması için veritabanı kurallarının (firestore.rules, storage.rules) Firebase konsolunda yayınlanmış olması gerekir.';
+      form.style.display = 'none';
+    } else {
+      status.innerHTML = '⚠️ <b>Güvenli mod kapalı.</b> Şu an uygulamayı açan herkes teknik olarak tüm üye verisini okuyabilir. Geçişte her üyeye yeni bir geçici şifre üretilir; üyeler ilk girişte kendi şifresini belirler. Önce Firebase konsolunda <b>Authentication → Sign-in method → E-posta/Şifre</b> yöntemini aç.';
+      form.style.display = 'block';
+    }
+  }
+  function startSecureMigration(){
+    const pw = document.getElementById('secureModePassword').value;
+    const msg = document.getElementById('secureModeMsg');
+    if(!pw){ msg.style.color = '#e2664e'; msg.textContent = 'Yönetici şifreni yaz.'; return; }
+    customConfirm('Güvenli moda geçilecek: tüm üyelere yeni geçici şifre üretilecek ve herkes yeniden giriş yapacak. Bu işlem geri alınamaz. Devam edilsin mi?', async (ok) => {
+      if(!ok) return;
+      const btn = document.getElementById('secureModeBtn');
+      btn.disabled = true; msg.style.color = 'var(--muted)';
+      try{
+        const codes = await migrateToSecureMode(pw, (t) => { msg.textContent = t; });
+        document.getElementById('secureModeForm').style.display = 'none';
+        msg.style.color = 'var(--green)';
+        msg.textContent = 'Güvenli moda geçildi. Aşağıdaki geçici şifreleri üyelere ilet (üye kartlarında da görünür).';
+        const box = document.getElementById('secureModeCodes');
+        box.style.display = 'block';
+        box.innerHTML = codes.map(c => `<div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:12px;"><span>${escapeHtml(c.name)} <span style="color:var(--muted);">${escapeHtml(c.phone)}</span></span><b style="color:var(--brass); letter-spacing:1px;">${escapeHtml(c.code)}</b></div>`).join('')
+          + '<button class="btn btn-brass btn-full" style="margin-top:12px;" onclick="location.reload()">Tamam, devam et</button>';
+      }catch(err){
+        console.error('Güvenli moda geçilemedi:', err);
+        msg.style.color = '#e2664e';
+        msg.textContent = 'Geçiş tamamlanamadı: ' + (err && err.message ? err.message : err);
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // Açılışta hangi düzende çalışılacağını belirler: herkese açık küçük bir ayar belgesi okunur
+  async function detectSecureMode(){
+    const read = async () => { const snap = await db.collection('config').doc('public').get(); return !!(snap.exists && snap.data().secure); };
+    try{ return await read(); }
+    catch(e){ return false; } // eski kurallar giriş yapmadan okumaya izin vermiyorsa: eski düzen
+  }
+
+
   let knownStateFields = null;
   let allStateRefs = []; // [veri, alan adı, tür] — hesap silme gibi toplu işlemler için
   // Eski tek belgede bu sürümün tanımadığı alanlar olabilir (örn. eski ortak bildirim listesi) — onlara dokunma
@@ -2238,7 +2890,13 @@
 
   async function initFirebaseAndLoadData(){
     try{
-      await firebase.auth().signInAnonymously();
+      secureMode = await detectSecureMode();
+      if(!secureMode){
+        await firebase.auth().signInAnonymously().catch(() => null);
+        // Eski kurallar giriş yapmadan okumaya izin vermiyor olabilir: bir kez de girişten sonra bak
+        if(await detectSecureMode()){ secureMode = true; await firebase.auth().signOut(); }
+      }
+      if(secureMode) return await initSecureMode();
       const [membersSnap, trainersSnap] = await Promise.all([
         db.collection('members').get(),
         db.collection('trainers').get()
@@ -2303,6 +2961,7 @@
         [consentRecords, 'consentRecords', 'object'],
         [loginLog, 'loginLog', 'object'],
         [loginLocks, 'loginLocks', 'object'],
+        [memberAnnouncements, 'memberAnnouncements', 'object'],
         [appMeta, 'appMeta', 'object'],
         [mealResetMonth, 'mealResetMonth', 'object'],
       ];
@@ -2410,6 +3069,16 @@
       console.error('Firebase yüklenemedi:', err);
       showCloudError('Sunucuya bağlanılamadı. İnternet bağlantını kontrol edip sayfayı yenile.');
     }
+  }
+
+  // Güvenli modda açılış: oturum açıksa veriyi yükle, değilse yalnızca giriş ekranını göster
+  // (giriş yapılmadan cihaza hiçbir üye verisi indirilmez).
+  async function initSecureMode(){
+    clearStateForSecureLoad(); // örnek/varsayılan veriler dahil, giriş yapılana kadar bellekte üye verisi bulunmasın
+    const user = await new Promise(resolve => { const off = firebase.auth().onAuthStateChanged(u => { off(); resolve(u); }); });
+    if(user && user.isAnonymous){ await firebase.auth().signOut(); }
+    else if(user){ await startSecureSession(null); }
+    hideCloudLoading();
   }
 
   // Kayıt sürerken sayfa kapatılır/yenilenirse tarayıcı uyarsın (masaüstünde çalışır, bazı
@@ -2981,6 +3650,7 @@
   let memberMeasurements = { "Mert Aydın": [] }; // { memberName: [{date, weight, neck, shoulder, chest, waist, hip, leg}] } — sadece yönetici ekler
 
   async function savePosturePhotoEntryForMember(memberName, photoDataUrl, addedBy){
+    if(!requireHealthConsent(memberName)) return;
     if(!posturePhotos[memberName]) posturePhotos[memberName] = [];
     // Fotoğrafı Firestore'a değil, Storage'a yüklüyoruz — kaydedilen sadece küçük bir bulut linki.
     const photoUrl = await uploadPhotoToStorage(photoDataUrl, 'posture');
@@ -2998,7 +3668,7 @@
     const photos = (posturePhotos[currentMemberName] || []).filter(p => p.addedBy === 'admin').slice().reverse();
     el.innerHTML = photos.length ? photos.map(p => `
       <div style="flex:0 0 auto; text-align:center;">
-        <img src="${p.photo}" style="width:70px; height:70px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
+        <img alt="" src="${p.photo}" style="width:70px; height:70px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
         <div style="font-size:9px; color:var(--muted); margin-top:3px;">${formatDateTr(p.date).slice(0,5)}</div>
       </div>`).join('') : '<div class="meal-empty">Yönetici henüz bir postür fotoğrafı eklemedi.</div>';
   }
@@ -3037,6 +3707,7 @@
   }
 
   async function addProgressEntry(){
+    if(!requireHealthConsent(currentMemberName)) return;
     const weight = parseFloat(document.getElementById('progressWeightInput').value);
     if(!weight || weight <= 0){
       alert('Lütfen geçerli bir kilo değeri gir.');
@@ -3273,7 +3944,7 @@
   function checkLeaderboardSeasonReset(){
     const now = getNow();
     const todayStr = toLocalDateStr(now);
-    if(!cloudReady) return;
+    if(!cloudReady || isSecureMember()) return;
     if(!leaderboardSeasonStart){ leaderboardSeasonStart = todayStr; appMeta.leaderboardSeasonStart = todayStr; return; }
     const start = new Date(leaderboardSeasonStart);
     const monthsPassed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
@@ -3321,8 +3992,7 @@
     const el = document.getElementById('leaderboardList');
     const pointsEl = document.getElementById('myPointsLabel');
     if(!el) return;
-    const realMembers = members.filter(m => m.role !== 'admin');
-    const ranked = realMembers.map(m => ({ name: m.name, points: getSeasonPoints(m.name) })).sort((a,b) => b.points - a.points);
+    const ranked = getLeaderboardRows().sort((a,b) => b.points - a.points);
     if(pointsEl){
       const mine = ranked.find(r => r.name === currentMemberName);
       pointsEl.textContent = mine ? `${mine.points} puan` : '0 puan';
@@ -3333,7 +4003,7 @@
     const myRankIdx = ranked.findIndex(r => r.name === currentMemberName);
 
     function rowHtml(r, i){
-      const displayName = maskName(r.name);
+      const displayName = r.masked ? r.name : maskName(r.name);
       return `
       <div class="roster-row" style="${r.name===currentMemberName ? 'background:var(--brass-soft); border-radius:8px; padding-left:8px; padding-right:8px;' : ''}">
         <span>${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} ${displayName}${r.name===currentMemberName ? ' (Sen)' : ''}</span>
@@ -3388,7 +4058,7 @@
       const delta = prev ? Math.round((e.weight - prev.weight)*10)/10 : null;
       return `
       <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12px;">
-        ${e.photo ? `<img src="${e.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; cursor:pointer;" onclick="window.open('${e.photo}','_blank')">` : ''}
+        ${e.photo ? `<img alt="" src="${e.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; cursor:pointer;" onclick="window.open('${e.photo}','_blank')">` : ''}
         <span style="color:var(--muted); white-space:nowrap;">${formatDateTr(e.date).slice(0,5)}</span>
         <span style="flex:1; font-weight:600;">${e.weight} kg</span>
         ${delta !== null ? `<span style="color:${delta<=0?'var(--green)':'var(--brass)'}; font-size:11px;">${delta>0?'▲':delta<0?'▼':'–'} ${Math.abs(delta)} kg</span>` : ''}
@@ -3468,11 +4138,11 @@
       <div class="card-label">ESKİ HALİ / YENİ HALİ</div>
       <div style="display:flex; gap:8px; margin-bottom:14px;">
         <div style="flex:1; text-align:center;">
-          <img src="${before.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
+          <img alt="" src="${before.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
           <div style="font-size:10.5px; color:var(--muted); margin-top:5px;">${formatDateTr(before.date)} · ${before.weight} kg</div>
         </div>
         <div style="flex:1; text-align:center;">
-          <img src="${after.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
+          <img alt="" src="${after.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
           <div style="font-size:10.5px; color:var(--muted); margin-top:5px;">${formatDateTr(after.date)} · ${after.weight} kg</div>
         </div>
       </div>`;
@@ -3782,6 +4452,11 @@
   async function claimAttendanceBatch(claims){
     if(attendanceClaimInFlight || !claims.length) return;
     attendanceClaimInFlight = true;
+    if(secureMode){
+      try{ await flushAllAutosaves(); await claimAttendanceSecure(claims); }
+      finally{ attendanceClaimInFlight = false; }
+      return;
+    }
     const logRef = db.collection('app_data').doc(legacyStorageMode ? 'appState' : 'state_attendanceLog');
     const pkgRef = db.collection('app_data').doc('memberPackages');
     try{
@@ -3814,6 +4489,7 @@
 
   function runAutoAttendance(){
     if(!cloudReady) return;
+    if(isSecureMember()) return; // güvenli modda yoklamayı yalnızca yönetici cihazı işler
     const now = getNow();
     const todayStr = toLocalDateStr(now);
     const thisMonday = getWeekMonday(todayStr);
@@ -3974,7 +4650,7 @@
         ${dayItems.length ? dayItems.map((m)=>`
           <div class="meal-item">
             <span style="display:flex; align-items:center; gap:8px;">
-              ${m.photo ? `<img src="${m.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; flex-shrink:0;">` : ''}
+              ${m.photo ? `<img alt="" src="${m.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; flex-shrink:0;">` : ''}
               <span>${escapeHtml(m.name)}${m.portion && m.portion !== 1 ? ` <span style="color:var(--muted); font-size:11px;">(${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})</span>` : (m.grams ? ` <span style="color:var(--muted); font-size:11px;">(${m.grams}g)</span>` : '')}</span>
             </span>
             <span style="display:flex; align-items:center; gap:10px;">
@@ -4003,7 +4679,7 @@
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
               <input type="file" id="addPhoto-${ki}" accept="image/*" capture="environment" style="display:none" onchange="handleMealPhoto(event, ${ki})">
               <button class="btn btn-ghost" style="flex:1; font-size:12.5px;" onclick="document.getElementById('addPhoto-${ki}').click()">📷 Fotoğraf Ekle</button>
-              <img id="addPhotoPreview-${ki}" style="display:none; width:38px; height:38px; border-radius:8px; object-fit:cover;">
+              <img alt="" id="addPhotoPreview-${ki}" style="display:none; width:38px; height:38px; border-radius:8px; object-fit:cover;">
             </div>
             <button class="btn btn-brass btn-full" id="confirmAddMealBtn-${ki}" onclick="confirmAddMeal('${key}', ${ki})">Ekle</button>
             <div id="addHint-${ki}" style="font-size:11px; color:var(--muted); margin-top:8px;">Yemek adını yazdıkça gramaj ve kaloriyi tahmin etmeye çalışırım, istersen kendin de değiştirebilirsin.</div>
@@ -4728,6 +5404,121 @@
   let photoConsent = {}; // { memberName: bool }
   let consentRecords = {}; // { memberName: { contract, kvkkRead, health, photo, date, version } } — her onay ayrı kaydedilir
 
+  // ==================== SÖZLEŞME · AYDINLATMA · AÇIK RIZA ====================
+  // Üç ayrı şey, üç ayrı yerde tutulur ve ayrı ayrı kaydedilir:
+  //  1) Üyelik Sözleşmesi  → kabul edilir (üyelik koşulları)
+  //  2) Aydınlatma Metni   → okunur; bir onay ya da rıza DEĞİLDİR (bilgilendirme)
+  //  3) Açık Rızalar       → her biri ayrı kutu, önceden işaretli değil, geri alınabilir
+  // Metinler değişince LEGAL_TEXT_VERSION artırılır; herkes bir sonraki girişte yeniden görür.
+  // NOT: Bu metinler bir taslaktır; yayına almadan önce bir avukata onaylatılmalıdır.
+  const LEGAL_TEXT_VERSION = 2;
+  function legalInfo(){
+    const l = appMeta.legal || {};
+    return {
+      name: l.name || 'TT Fitness Studio',
+      address: l.address || '[ADRES — Yönetici › Ayarlar › Veri sorumlusu bilgileri]',
+      email: l.email || '[E-POSTA — Yönetici › Ayarlar › Veri sorumlusu bilgileri]',
+      phone: l.phone || '',
+      complete: !!(l.name && l.address && l.email),
+    };
+  }
+  function contractSections(){
+    const L = legalInfo();
+    return [
+      ['1. Taraflar', `Bu sözleşme, ${L.name} ("Salon") ile üye arasında kurulmuştur.`],
+      ['2. Üyelik Süresi ve Paket', 'Üyenin paketi, belirtilen başlangıç ve bitiş tarihleri arasında, belirlenen ders sayısı kadar geçerlidir.'],
+      ['3. Devamsızlık ve Ders Hakkı', 'Ders saati geçtiğinde, üyenin derse katılıp katılmadığına bakılmaksızın ders hakkı düşer. Grup seanslarında tek bir üye bile katılsa, ders yapılmış sayılır.'],
+      ['4. Ödeme', 'Paket bedeli, paket başlangıcında veya salon yönetimiyle mutabık kalınan şekilde ödenir. Süresi geçen ödemeler için üye bilgilendirilir.'],
+      ['5. İptal ve Devir', 'Üyelik, salon yönetiminin onayı olmadan başka bir kişiye devredilemez.'],
+      ['6. Sağlık Sorumluluğu', 'Üye, spor yapmaya elverişli olduğunu beyan eder. Sağlık durumuna dair değişiklikleri salon yönetimine bildirmekle yükümlüdür.'],
+      ['7. Kişisel Veriler', 'Kişisel verilerin işlenmesine ilişkin bilgiler, ayrı olarak sunulan Aydınlatma Metni\'nde yer alır. Bu sözleşmenin kabul edilmesi açık rıza anlamına gelmez; açık rıza gerektiren konular ayrıca ve isteğe bağlı olarak sorulur.'],
+    ];
+  }
+  function noticeSections(){
+    const L = legalInfo();
+    return [
+      ['1. Veri Sorumlusu', `Kişisel verileriniz, 6698 sayılı Kişisel Verilerin Korunması Kanunu ("KVKK") kapsamında veri sorumlusu sıfatıyla ${L.name} tarafından işlenmektedir.\nAdres: ${L.address}\nE-posta: ${L.email}${L.phone ? '\nTelefon: ' + L.phone : ''}`],
+      ['2. İşlenen Veriler, Amaçlar ve Hukuki Sebepler',
+        '• Kimlik ve iletişim bilgileri (ad soyad, telefon, doğum tarihi): üyelik kaydının oluşturulması ve sizinle iletişim kurulması — sözleşmenin kurulması ve ifası.\n' +
+        '• Üyelik ve ödeme kayıtları (paket, ders programı, yoklama, ödeme tutar ve tarihleri): üyeliğin yürütülmesi ve ödeme takibi — sözleşmenin ifası ve hukuki yükümlülüklerin yerine getirilmesi.\n' +
+        '• Acil durum kişisi; 18 yaşından küçük üyelerde veli bilgileri: acil durumda yakınınıza ulaşılması, veli onayının belgelenmesi — meşru menfaat ve hukuki yükümlülük.\n' +
+        '• Uygulama içi mesajlar, öğün kayıtları ve hedef notları: talep ettiğiniz antrenman ve beslenme takibi hizmetinin sunulması — sözleşmenin ifası.\n' +
+        '• Giriş kayıtları: hesap güvenliğinin sağlanması — veri güvenliği yükümlülüğü ve meşru menfaat.\n' +
+        '• Sağlık verileri (sağlık beyanı, kilo ve vücut ölçüleri, postür ve ilerleme fotoğrafları): antrenman programının size göre hazırlanması ve gelişiminizin takibi — YALNIZCA açık rızanızla işlenir. Rıza vermezseniz bu veriler kaydedilmez; üyeliğiniz bundan etkilenmez.\n' +
+        '• Fotoğraflarınızın tanıtım amacıyla kullanılması ve size kampanya/tanıtım iletisi gönderilmesi: YALNIZCA bunlar için ayrıca vereceğiniz açık rıza/onay ile.'],
+      ['3. Toplama Yöntemi', 'Verileriniz; bu uygulama üzerinden sizin girdiğiniz bilgiler ve salon personelinin üyeliğinize ilişkin girdiği kayıtlar yoluyla, elektronik ortamda toplanır.'],
+      ['4. Verilerin Aktarılması', 'Verileriniz reklam veya pazarlama amacıyla üçüncü kişilere verilmez ve satılmaz. Uygulamanın çalışabilmesi için veriler, barındırma hizmeti alınan Google (Firebase / Google Cloud) altyapısında saklanır; bu sunucular yurt dışında bulunabilir. Bu saklama, ayrıca vereceğiniz açık rızaya dayanır. Bunun dışında verileriniz yalnızca yasal zorunluluk halinde yetkili kamu kurum ve kuruluşlarıyla paylaşılabilir.'],
+      ['5. Saklama Süresi', 'Verileriniz üyeliğiniz süresince, üyeliğin sona ermesinden sonra ise ilgili mevzuatta öngörülen saklama süreleri boyunca saklanır. Hesabınızı sildiğinizde uygulamadaki kişisel verileriniz silinir; mevzuat gereği saklanması zorunlu kayıtlar (örneğin mali kayıtlar) ilgili sürelerin sonunda silinir.'],
+      ['6. Haklarınız', 'KVKK\'nın 11. maddesi uyarınca; kişisel verilerinizin işlenip işlenmediğini öğrenme, işlenmişse buna ilişkin bilgi talep etme, işlenme amacını ve amacına uygun kullanılıp kullanılmadığını öğrenme, yurt içinde veya yurt dışında aktarıldığı üçüncü kişileri bilme, eksik veya yanlış işlenmişse düzeltilmesini isteme, silinmesini veya yok edilmesini isteme, bu işlemlerin verilerin aktarıldığı üçüncü kişilere bildirilmesini isteme, münhasıran otomatik sistemlerle analiz edilmesi sonucu aleyhinize bir sonucun ortaya çıkmasına itiraz etme ve kanuna aykırı işleme nedeniyle zarara uğramanız halinde zararın giderilmesini talep etme haklarına sahipsiniz.'],
+      ['7. Başvuru', `Taleplerinizi ${L.email} adresine e-posta ile ya da ${L.address} adresine yazılı olarak iletebilirsiniz. Ayrıca uygulamada Ayarlar › İzinlerim bölümünden verdiğiniz rızaları dilediğiniz zaman geri alabilir, yine Ayarlar bölümünden hesabınızı ve verilerinizi silebilirsiniz.`],
+    ];
+  }
+  // Açık rızalar. required: uygulamayı kullanabilmek için gerekli (salon hizmeti için değil).
+  function consentItems(){
+    return [
+      { key: 'abroad', required: true, title: 'Verilerimin yurt dışındaki sunucularda saklanması',
+        text: 'Kişisel verilerimin, bu uygulamanın altyapısını sağlayan Google (Firebase) sunucularında — yurt dışında bulunabilecek şekilde — saklanmasına açık rıza veriyorum.',
+        note: 'Uygulama bu altyapı olmadan çalışamaz. Bu rızayı vermek istemezsen uygulamayı kullanmadan da salon hizmetlerinden yararlanabilirsin; salon yönetimine haber vermen yeterli.' },
+      { key: 'health', required: false, title: 'Sağlık verilerim',
+        text: 'Sağlık beyanımın, kilo ve vücut ölçülerimin, postür ve ilerleme fotoğraflarımın; antrenman programımın bana göre hazırlanması ve gelişimimin takibi amacıyla kaydedilmesine açık rıza veriyorum.',
+        note: 'İsteğe bağlıdır. Vermezsen bu veriler kaydedilmez; üyeliğin etkilenmez.' },
+      { key: 'photo', required: false, title: 'Fotoğraflarımın tanıtımda kullanılması',
+        text: 'Postür/ilerleme fotoğraflarımın, salonun sosyal medya hesaplarında ve tanıtım materyallerinde kullanılmasına açık rıza veriyorum.',
+        note: 'İsteğe bağlıdır.' },
+      { key: 'marketing', required: false, title: 'Kampanya ve tanıtım iletileri',
+        text: 'Kampanya, etkinlik ve tanıtım içerikli iletilerin telefon numarama (arama, SMS, WhatsApp) gönderilmesine onay veriyorum.',
+        note: 'İsteğe bağlıdır. Üyeliğinle ilgili zorunlu bilgilendirmeler (ders, ödeme hatırlatması) bu onaydan bağımsızdır.' },
+    ];
+  }
+  const sectionsToHtml = (sections) => sections.map(([t, body]) => `<b>${escapeHtml(t)}</b><br>${escapeHtml(body).replace(/\n/g, '<br>')}`).join('<br><br>');
+  const sectionsToText = (sections) => sections.map(([t, body]) => `${t}\n${body}`).join('\n\n');
+  const consentCheckboxId = (key) => key === 'health' ? 'healthConsentCheckbox' : key === 'photo' ? 'photoConsentCheckbox' : key + 'ConsentCheckbox';
+  function renderLegalTexts(){
+    const c = document.getElementById('gateContractText'), n = document.getElementById('gateNoticeText'), list = document.getElementById('gateConsentList');
+    if(c) c.innerHTML = sectionsToHtml(contractSections());
+    if(n) n.innerHTML = sectionsToHtml(noticeSections());
+    if(list) list.innerHTML = consentItems().map((it, i) => `
+      <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; ${i ? 'margin-top:14px; padding-top:14px; border-top:1px solid var(--line);' : ''}">
+        <input type="checkbox" id="${consentCheckboxId(it.key)}" style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="toggleContractAcceptButton()">
+        <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;"><b>${escapeHtml(it.title)}</b> <span style="color:${it.required ? '#e2664e' : 'var(--muted)'}; font-size:10.5px;">(${it.required ? 'uygulamayı kullanmak için gerekli' : 'isteğe bağlı'})</span><br>${escapeHtml(it.text)}<br><span style="color:var(--muted); font-size:11px;">${escapeHtml(it.note)}</span></span>
+      </label>`).join('');
+  }
+  // Üyenin güncel metinlere göre onay/rıza kaydı var mı
+  function hasCurrentConsentRecord(name){
+    const rec = consentRecords[name];
+    return !!(rec && rec.textVersion === LEGAL_TEXT_VERSION);
+  }
+  function needsContractGate(name){
+    return !contractAccepted[name] || contractAcceptedVersion[name] !== CONTRACT_VERSION || !hasCurrentConsentRecord(name);
+  }
+  const hasHealthConsent = (name) => !!(consentRecords[name] && consentRecords[name].health === true);
+  function consentStamp(){
+    const now = getNow();
+    return { date: toLocalDateStr(now), time: pad2(now.getHours()) + ':' + pad2(now.getMinutes()) };
+  }
+  // Rıza kaydına, ne zaman neyin verildiğini/geri alındığını gösteren bir satır ekler (ispat için)
+  function logConsentChange(rec, key, value){
+    rec.log = (rec.log || []).concat([{ ...consentStamp(), key, value: !!value }]).slice(-40);
+  }
+  // Sağlık verisi rızası olmayan (ya da geri alınmış) üyelerin sağlık verilerini siler.
+  // Yalnızca güncel rıza ekranını görmüş üyeler için çalışır; yönetici cihazı salonun tuttuğu
+  // ölçüm ve postür kayıtlarını, üye cihazı kendi girdiklerini siler.
+  function purgeHealthDataWithoutConsent(){
+    if(!cloudReady) return;
+    Object.keys(consentRecords).forEach(name => {
+      if(!hasCurrentConsentRecord(name) || consentRecords[name].health === true) return;
+      if(isSecureMember() && name !== currentMemberName) return;
+      delete healthDeclarations[name];
+      if(!isSecureMember()){ delete memberMeasurements[name]; if((posturePhotos[name] || []).length) posturePhotos[name] = []; }
+      if((progressEntries[name] || []).length) progressEntries[name] = [];
+    });
+  }
+  function requireHealthConsent(name){
+    if(hasHealthConsent(name)) return true;
+    alert(`${name === currentMemberName && memberSessionActive ? 'Bu kaydı' : name + ' için bu kaydı'} tutabilmek için "Sağlık verilerim" açık rızası gerekiyor.\nÜye bu rızayı uygulamada Ayarlar › İzinlerim bölümünden verebilir.`);
+    return false;
+  }
+
   function showContractGate(){
     lastActiveTab = 'home'; // kabul edince buraya döner
     document.querySelectorAll('#screen .view').forEach(v=>v.classList.remove('active'));
@@ -4738,16 +5529,15 @@
     if(subtitleEl){
       subtitleEl.textContent = isReaccept
         ? 'Üyelik sözleşmesi güncellendi — devam edebilmek için yeniden okuyup onaylaman gerekiyor.'
-        : 'Üyelik sözleşmesini ve KVKK aydınlatma metnini okuyup onaylaman gerekiyor.';
+        : (contractAccepted[currentMemberName] ? 'Sözleşme, aydınlatma metni ve rıza beyanları güncellendi — devam edebilmek için yeniden gözden geçirmen gerekiyor.' : 'Üyelik sözleşmesini onaylaman ve aydınlatma metnini okuman gerekiyor. Açık rızalar ayrıca sorulur.');
     }
+    renderLegalTexts(); // metinler ve rıza kutuları (hiçbiri önceden işaretli değil)
     document.getElementById('contractAcceptCheckbox').checked = false;
     document.getElementById('kvkkReadCheckbox').checked = false;
-    document.getElementById('healthConsentCheckbox').checked = !!(consentRecords[currentMemberName] && consentRecords[currentMemberName].health);
     const existingHealth = healthDeclarations[currentMemberName];
     document.getElementById('healthDeclNone').checked = !(existingHealth && existingHealth.hasCondition);
     document.getElementById('healthDeclHas').checked = !!(existingHealth && existingHealth.hasCondition);
     document.getElementById('healthDeclDetails').value = existingHealth ? (existingHealth.details || '') : '';
-    document.getElementById('photoConsentCheckbox').checked = !!photoConsent[currentMemberName];
     populateGateBirthdateDropdowns();
     if(getMemberProfile(currentMemberName).birthday){
       const [by, bm, bd] = getMemberProfile(currentMemberName).birthday.split('-');
@@ -4825,27 +5615,42 @@
     toggleContractAcceptButton();
   }
   // Ayarlar > İzinlerim: üye verdiği izinleri buradan geri alabilir / yeniden verebilir
-  function updateMyConsents(){
-    const health = document.getElementById('settingsHealthConsent').checked;
-    const photo = document.getElementById('settingsPhotoConsent').checked;
-    const rec = consentRecords[currentMemberName] || { contract: !!contractAccepted[currentMemberName], kvkkRead: !!contractAccepted[currentMemberName] };
-    const hadHealth = !!rec.health;
-    consentRecords[currentMemberName] = { ...rec, health, photo, updated: toLocalDateStr(getNow()) };
-    photoConsent[currentMemberName] = photo;
-    if(hadHealth && !health) delete healthDeclarations[currentMemberName];
-    const msg = document.getElementById('consentSaveMsg');
-    if(msg){ msg.textContent = 'İzin tercihlerin kaydedildi ✓'; msg.style.color = 'var(--green)'; }
-    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  function updateMyConsents(changedKey){
+    const name = currentMemberName;
+    const values = { health: document.getElementById('settingsHealthConsent').checked, photo: document.getElementById('settingsPhotoConsent').checked,
+      marketing: document.getElementById('settingsMarketingConsent').checked };
+    const rec = { ...(consentRecords[name] || { contract: !!contractAccepted[name], kvkkRead: !!contractAccepted[name] }) };
+    const apply = () => {
+      Object.keys(values).forEach(k => { if(!!rec[k] !== values[k]){ rec[k] = values[k]; logConsentChange(rec, k, values[k]); } });
+      rec.updated = consentStamp().date;
+      consentRecords[name] = rec;
+      photoConsent[name] = values.photo;
+      purgeHealthDataWithoutConsent();
+      const msg = document.getElementById('consentSaveMsg');
+      if(msg){ msg.textContent = 'İzin tercihlerin kaydedildi ✓'; msg.style.color = 'var(--green)'; }
+      if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+      if(typeof renderProgressTracking === 'function') renderProgressTracking();
+    };
+    // Sağlık rızasını geri almak veri siler: önce sor
+    if(changedKey === 'health' && rec.health === true && !values.health){
+      customConfirm('Sağlık verileri rızanı geri alıyorsun. Kayıtlı sağlık beyanın, ölçümlerin, kilo kayıtların ve postür fotoğrafların silinecek. Devam edilsin mi?', (ok) => {
+        if(ok) apply(); else document.getElementById('settingsHealthConsent').checked = true;
+      });
+      return;
+    }
+    apply();
   }
   function toggleContractAcceptButton(){
     const checked = document.getElementById('contractAcceptCheckbox').checked && document.getElementById('kvkkReadCheckbox').checked;
     const birthdateVal = document.getElementById('gateBirthdateInput').value;
     const age = calculateAgeFromDate(birthdateVal);
     const isMinor = age !== null && age < 18;
-    // Sağlık durumu bildiriliyorsa ayrı açık rıza kutusu da işaretli olmalı
+    // Sağlık durumu bildiriliyorsa "Sağlık verilerim" rızası da işaretli olmalı
     const healthBlocked = document.getElementById('healthDeclHas').checked && !document.getElementById('healthConsentCheckbox').checked;
     document.getElementById('healthConsentWarning').style.display = healthBlocked ? 'block' : 'none';
-    let ready = checked && !!birthdateVal && !healthBlocked;
+    // Uygulamayı kullanmak için gerekli rızalar (yurt dışı sunucu)
+    const requiredOk = consentItems().filter(it => it.required).every(it => document.getElementById(consentCheckboxId(it.key)).checked);
+    let ready = checked && !!birthdateVal && !healthBlocked && requiredOk;
     if(isMinor){
       const parentOk = document.getElementById('gateParentConsentCheckbox').checked
         && document.getElementById('gateParentName').value.trim()
@@ -4883,16 +5688,21 @@
     const healthConsent = document.getElementById('healthConsentCheckbox').checked;
     if(!document.getElementById('kvkkReadCheckbox').checked) return;
     if(hasCondition && !healthConsent) return;
-    healthDeclarations[currentMemberName] = {
-      hasCondition,
-      details: hasCondition ? document.getElementById('healthDeclDetails').value.trim() : '',
-    };
+    if(!consentItems().filter(it => it.required).every(it => document.getElementById(consentCheckboxId(it.key)).checked)) return;
+    // Sağlık beyanı yalnızca "Sağlık verilerim" rızası verildiyse kaydedilir
+    if(healthConsent){
+      healthDeclarations[currentMemberName] = { hasCondition, details: hasCondition ? document.getElementById('healthDeclDetails').value.trim() : '' };
+    } else {
+      delete healthDeclarations[currentMemberName];
+    }
     photoConsent[currentMemberName] = document.getElementById('photoConsentCheckbox').checked;
-    // Her onay ayrı ayrı, tarihiyle birlikte kaydedilir
-    consentRecords[currentMemberName] = {
-      contract: true, kvkkRead: true, health: healthConsent, photo: photoConsent[currentMemberName],
-      date: toLocalDateStr(getNow()), version: CONTRACT_VERSION,
-    };
+    // Sözleşme kabulü, aydınlatmanın okunduğu ve HER rıza ayrı ayrı; tarih, saat ve metin sürümüyle kaydedilir
+    const stamp = consentStamp();
+    const rec = { contract: true, kvkkRead: true, ...stamp, version: CONTRACT_VERSION, textVersion: LEGAL_TEXT_VERSION,
+      log: ((consentRecords[currentMemberName] || {}).log || []) };
+    consentItems().forEach(it => { rec[it.key] = document.getElementById(consentCheckboxId(it.key)).checked; logConsentChange(rec, it.key, rec[it.key]); });
+    consentRecords[currentMemberName] = rec;
+    purgeHealthDataWithoutConsent();
     const hamburger = document.getElementById('hamburgerBtn');
     if(hamburger) hamburger.style.visibility = 'visible';
     const searchBtn = document.getElementById('memberSearchBtn');
@@ -5076,6 +5886,8 @@
     const myConsent = consentRecords[currentMemberName] || {};
     document.getElementById('settingsHealthConsent').checked = !!myConsent.health;
     document.getElementById('settingsPhotoConsent').checked = !!photoConsent[currentMemberName];
+    document.getElementById('settingsMarketingConsent').checked = !!myConsent.marketing;
+    document.getElementById('consentSaveMsg').textContent = '';
     if(nameEl) nameEl.value = settingsProfile.name || '';
     if(ageEl) ageEl.value = settingsProfile.age || '';
     if(genderEl) genderEl.value = settingsProfile.gender || '';
@@ -5100,6 +5912,12 @@
     currentAdminName = null;
     document.getElementById('forcedPasswordOverlay').style.display = 'none';
     try{ localStorage.removeItem('ttf_session'); }catch(e){}
+    if(secureMode){
+      // Oturumu kapat ve sayfayı yenile: bellekteki tüm veri ve canlı dinleyiciler temizlensin
+      document.getElementById('cloudLoadingOverlay').style.display = 'flex';
+      flushAllAutosaves().catch(() => null).then(() => firebase.auth().signOut()).catch(() => null).then(() => location.reload());
+      return;
+    }
     document.getElementById('member-app').style.display = 'none';
     document.getElementById('admin-app').style.display = 'none';
     document.getElementById('logged-out-screen').style.display = 'flex';
@@ -5125,6 +5943,14 @@
     const phone = document.getElementById('forgotPhoneInput').value.trim();
     if(!phone){ alert('Lütfen telefon numaranı gir.'); return; }
     const code = String(Math.floor(100000 + Math.random()*900000));
+    if(secureMode){
+      // Giriş yapılmadığı için yalnızca "istek bırakma" yetkisi var; listeyi yalnızca yönetim okur
+      const now = new Date();
+      db.collection('reset_requests').add({ phone: phone.slice(0, 30), date: toLocalDateStr(now), code, ts: now.getTime() }).catch(err => console.error('İstek gönderilemedi:', err));
+      document.getElementById('forgotPasswordForm').style.display = 'none';
+      document.getElementById('forgotPasswordSuccess').style.display = 'block';
+      return;
+    }
     // Aynı numara için tek istek tutulur ve liste en fazla 50 kayıtla sınırlıdır
     // (biri art arda istek göndererek kaydı şişiremesin).
     for(let i = passwordResetRequests.length - 1; i >= 0; i--){
@@ -5196,6 +6022,12 @@
     return bytesToHex(bits);
   }
   async function setMemberPassword(member, plain){
+    if(secureMode){
+      // Kendi şifresi: Firebase'de güncellenir. Başkasının şifresi (yönetici): hesap yeniden açılır.
+      if(secureSession && member._id === secureSession.memberId) await firebase.auth().currentUser.updatePassword(plain);
+      else await provisionMemberAccount(member, plain);
+      return;
+    }
     if(!canHashPasswords()){ member.password = plain; return; } // güvenli olmayan (http) ortam: eski davranış
     const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
     member.pw = { s: salt, i: PW_ITERATIONS, h: await derivePasswordHash(plain, salt, PW_ITERATIONS) };
@@ -5203,6 +6035,13 @@
   }
   async function verifyMemberPassword(member, plain){
     if(!member || typeof plain !== 'string' || !plain) return false;
+    if(secureMode){
+      // Yalnızca giriş yapmış kişinin kendi şifresi doğrulanabilir (Firebase yeniden doğrular)
+      const user = firebase.auth().currentUser;
+      if(!user || !secureSession || member._id !== secureSession.memberId) return false;
+      try{ await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email, plain)); return true; }
+      catch(e){ return false; }
+    }
     if(member.pw && member.pw.h){
       if(!canHashPasswords()) return false;
       return (await derivePasswordHash(plain, member.pw.s, member.pw.i || PW_ITERATIONS)) === member.pw.h;
@@ -5218,6 +6057,7 @@
     return bytesToHex(digest).slice(0, 40);
   }
   async function saveSession(member){
+    if(secureMode) return; // oturumu Firebase yönetir
     try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: member.phone, t: await sessionTokenFor(member) })); }catch(e){}
   }
   const MIN_PASSWORD_LENGTH = 6;
@@ -5248,6 +6088,7 @@
       errorEl.textContent = 'Lütfen telefon numarası ve şifreni gir.';
       return;
     }
+    if(secureMode){ await secureLogin(phone, password, errorEl); return; }
     const lock = getLoginLock();
     if(lock.until && lock.until > Date.now()){
       const mins = Math.ceil((lock.until - Date.now()) / 60000);
@@ -5314,15 +6155,20 @@
     document.getElementById('forcedPasswordMsg').textContent = '';
   }
   async function saveForcedPassword(){
-    const me = members.find(m => m.name === currentMemberName);
+    const me = members.find(m => m.name === (currentAdminName || currentMemberName));
     const p1 = document.getElementById('forcedPassword1').value;
     const p2 = document.getElementById('forcedPassword2').value;
     const msgEl = document.getElementById('forcedPasswordMsg');
     if(!me) return;
     if(p1.length < MIN_PASSWORD_LENGTH){ msgEl.textContent = `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`; return; }
     if(p1 !== p2){ msgEl.textContent = 'Şifreler birbiriyle uyuşmuyor.'; return; }
-    if(p1 === me.activationCode || await verifyMemberPassword(me, p1)){ msgEl.textContent = 'Yeni şifren, sana verilen koddan/şifreden farklı olmalı.'; return; }
-    await setMemberPassword(me, p1);
+    if(p1 === me.activationCode || (!secureMode && await verifyMemberPassword(me, p1))){ msgEl.textContent = 'Yeni şifren, sana verilen koddan/şifreden farklı olmalı.'; return; }
+    try{ await setMemberPassword(me, p1); }
+    catch(err){
+      console.error('Şifre kaydedilemedi:', err);
+      msgEl.textContent = (err && err.code === 'auth/requires-recent-login') ? 'Güvenlik için çıkış yapıp tekrar giriş yapman gerekiyor.' : 'Şifre kaydedilemedi, tekrar dene.';
+      return;
+    }
     delete me.mustSetPassword;
     delete me.activationCode;
     await saveSession(me);
@@ -5342,6 +6188,7 @@
       adminTrainerScope = found.adminScope === 'own' ? found.trainerScope : null;
       memberSessionActive = false;
       currentAdminName = found.name;
+      if(found.mustSetPassword) showForcedPasswordOverlay(); // geçici şifreyle giren yönetici de kendi şifresini belirler
       document.getElementById('member-app').style.display = 'none';
       document.getElementById('admin-app').style.display = 'contents';
       renderPriceForm(); renderConsumption(); renderAdminAvailability(); renderAdminMeals(); renderProgramForm(); renderAssignedPrograms(); renderEditMemberForm(); renderAttendanceLog(); renderMemberProfiles(); renderSystemClock(); initSystemClockInput(); renderMealReminderForm(); renderAnalytics(); renderAnnounceForm(); renderProgressAdminMemberSelect(); setFinanceType('income'); renderFinance(); toggleFinanceTabVisibility(); renderAdminHome(); checkAdminBirthdayAlert();
@@ -5373,7 +6220,7 @@
     document.getElementById('admin-app').style.display = 'none';
     document.getElementById('member-app').style.display = 'contents';
     renderClasses(); renderHomeUpcoming(); renderMembership(); renderTrainers(); renderMyConsumption(); renderProgressTracking(); renderBadges(); renderLeaderboard(); renderMyAnnouncements(); checkMonthlyMealReset(); renderPostureGallery(); renderMemberMeasurements(); checkMotivationNotification(); checkWeeklySummary(); checkWaterReminder(); checkMealSuggestion(); checkLeaderboardSeasonReset(); renderDailyChecklist(); renderGoalNote(); renderReferralCode(); checkBirthdayNotification(); renderClassHistory(); renderMonthlyCalendar(); renderTrainerNote(); renderFixedScheduleSummary(); renderMyContractStatus(); renderHomePackageDates();
-    if(!contractAccepted[currentMemberName] || contractAcceptedVersion[currentMemberName] !== CONTRACT_VERSION){
+    if(needsContractGate(currentMemberName)){
       showContractGate();
     } else {
       switchTab('home', document.querySelector('#member-app .tab[data-view="home"]'));
@@ -5421,6 +6268,14 @@
       document.getElementById('themeDarkBtn').classList.replace('btn-ghost','btn-brass');
       document.getElementById('themeLightBtn').classList.replace('btn-brass','btn-ghost');
     }
+    applyPageChromeColor(mode === 'light' ? '#FAFAF8' : '#15171B');
+  }
+  // Telefonun durum çubuğu ve uygulamanın arkasındaki zemin, tema rengiyle aynı olsun
+  function applyPageChromeColor(color){
+    document.documentElement.style.setProperty('--page-bg', color);
+    document.documentElement.style.background = color;
+    const meta = document.getElementById('themeColorMeta');
+    if(meta) meta.setAttribute('content', color);
   }
 
   function handlePhotoUpload(event){
@@ -5478,7 +6333,8 @@
     let phoneChanged = false;
     if(phone){
       const meObj = members.find(x => x.name === currentMemberName);
-      if(meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
+      // Güvenli modda telefon aynı zamanda giriş kimliğidir; yalnızca yönetim değiştirebilir
+      if(!secureMode && meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
         meObj.phone = phone;
         phoneChanged = true;
         saveSession(meObj);
@@ -5529,8 +6385,19 @@
     members.splice(idx, 1);
     try{ ['notifs', 'dismissed'].forEach(kind => localStorage.removeItem('ttf_' + kind + '_' + name)); localStorage.removeItem('ttf_onboarded_' + name); }catch(e){}
 
-    await flushAllAutosaves();
-    if(membersSync && member._id) await membersSync.deleteDoc(member._id);
+    if(secureMode && member._id){
+      // Üyenin tüm belgelerini ve giriş yetkisini sil (yetki belgesi en son: üye kendi hesabını siliyorsa
+      // önceki adımlar için hâlâ yetkili olmalı)
+      const selfDelete = !!(secureSession && secureSession.memberId === member._id);
+      disposeMemberSyncs(member._id);
+      await Promise.all(['member_self', 'member_admin', 'member_private'].map(c => db.collection(c).doc(member._id).delete()));
+      if(!selfDelete) await db.collection('login_index').doc(phoneKeyOf(member.phone)).delete().catch(() => null);
+      await membersSync.deleteDoc(member._id);
+      if(member.uid) await db.collection('users').doc(member.uid).delete();
+    } else {
+      await flushAllAutosaves();
+      if(membersSync && member._id) await membersSync.deleteDoc(member._id);
+    }
     // Fotoğraf dosyalarını da sil (biri silinemezse diğerlerine devam et)
     await Promise.all(photoUrls.filter(u => typeof u === 'string' && u.startsWith('http')).map(u => {
       try{ return storage.refFromURL(u).delete().catch(() => null); }catch(e){ return null; }
@@ -5559,6 +6426,7 @@
       memberSessionActive = false;
       await deleteMemberCompletely(name);
       hideDeleteAccountConfirm();
+      if(secureMode){ try{ await firebase.auth().currentUser.delete(); }catch(e){ console.warn('Giriş hesabı silinemedi:', e); } }
       logOut();
       document.getElementById('loginError').textContent = 'Hesabın ve tüm verilerin silindi.';
     }catch(err){
@@ -5784,10 +6652,13 @@
       }
     }
     const created = entries.map(e => {
-      const code = String(Math.floor(100000 + Math.random()*900000));
+      const code = newActivationCode();
       members.push({ name: e.name, water: 0, coffee: 0, waterCredits: 0, coffeeCredits: 0, status: "pending", phone: e.phone, activationCode: code, password: code, role: "member", group: groupName, joinDate: toLocalDateStr(getNow()) });
-      return { name: e.name, phone: e.phone, code };
+      const added = members[members.length - 1];
+      if(secureMode){ delete added.password; added.mustSetPassword = true; }
+      return { name: e.name, phone: e.phone, code, member: added };
     });
+    provisionNewMembers(created.map(c => c.member));
     lastCreatedGroupName = groupName;
 
     renderConsumption();
@@ -5923,7 +6794,10 @@
     if(!req) return;
     const matched = members.find(m => m.role !== 'admin' && normalizePhone(m.phone) === normalizePhone(req.phone));
     if(!matched){ alert('Eşleşen üye bulunamadı.'); return; }
-    await setMemberPassword(matched, req.code);
+    if(secureMode) req.code = randomTempCode();
+    try{ await setMemberPassword(matched, req.code); }
+    catch(err){ console.error(err); alert('Şifre sıfırlanamadı: ' + err.message); return; }
+    removeResetRequestDoc(req);
     matched.activationCode = req.code;
     matched.mustSetPassword = true;
     delete loginLocks[accountLockKey(matched)];
@@ -5932,11 +6806,56 @@
     renderPasswordResetRequests();
   }
   function dismissPasswordReset(idx){
+    removeResetRequestDoc(passwordResetRequests[idx]);
     passwordResetRequests.splice(idx, 1);
     renderPasswordResetRequests();
   }
 
+  // Tüm veriyi tek bir dosyaya döker (yalnızca tam yetkili yönetici). Fotoğrafların kendisi değil, bağlantıları yedeklenir.
+  function downloadBackup(){
+    if(adminTrainerScope){ alert('Yedeği yalnızca tam yetkili yönetici alabilir.'); return; }
+    const strip = (m) => { const c = { ...m }; delete c.pw; delete c.password; delete c.activationCode; return c; };
+    const data = { uygulama: 'TT Fitness Studio', tarih: new Date().toISOString(), duzen: secureMode ? 'guvenli' : 'eski',
+      members: members.map(strip), trainers, memberPackages, state: {} };
+    allStateRefs.forEach(([ref, field]) => { if(!['loginLocks'].includes(field)) data.state[field] = ref; });
+    const blob = new Blob([JSON.stringify(sanitizeForFirestore(data), null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'tt-fitness-yedek-' + toLocalDateStr(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    appMeta.lastBackup = toLocalDateStr(new Date());
+    const msg = document.getElementById('backupMsg');
+    if(msg){ msg.style.color = 'var(--green)'; msg.textContent = 'Yedek indirildi ✓'; }
+  }
+  function renderLegalInfoCard(){
+    const backupCard = document.getElementById('backupCard');
+    if(backupCard) backupCard.style.display = adminTrainerScope ? 'none' : 'block';
+    const backupMsg = document.getElementById('backupMsg');
+    if(backupMsg && !backupMsg.textContent) backupMsg.textContent = appMeta.lastBackup ? 'Son yedek: ' + formatDateTr(appMeta.lastBackup) : 'Henüz yedek alınmadı.';
+    const card = document.getElementById('legalInfoCard');
+    if(!card) return;
+    card.style.display = adminTrainerScope ? 'none' : 'block';
+    const l = appMeta.legal || {};
+    document.getElementById('legalNameInput').value = l.name || '';
+    document.getElementById('legalAddressInput').value = l.address || '';
+    document.getElementById('legalEmailInput').value = l.email || '';
+    document.getElementById('legalPhoneInput').value = l.phone || '';
+  }
+  function saveLegalInfo(){
+    if(adminTrainerScope) return;
+    const val = (id) => neutralizeText(document.getElementById(id).value.trim()).slice(0, 200);
+    appMeta.legal = { name: val('legalNameInput'), address: val('legalAddressInput'), email: val('legalEmailInput'), phone: val('legalPhoneInput') };
+    const msg = document.getElementById('legalInfoMsg');
+    const ok = legalInfo().complete;
+    msg.style.color = ok ? 'var(--green)' : '#e2664e';
+    msg.textContent = ok ? 'Kaydedildi ✓ Metinlerde bu bilgiler görünecek.' : 'Kaydedildi, ancak ad, adres ve e-posta alanlarının üçü de dolu olmalı.';
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+    renderAdminHome();
+  }
   function renderAdminHome(){
+    const legalWarn = document.getElementById('homeLegalWarning');
+    if(legalWarn) legalWarn.style.display = (!adminTrainerScope && !legalInfo().complete) ? 'block' : 'none';
     renderPasswordResetRequests();
     renderPendingCreditRequests();
     if(typeof updateAdminUnreadBadge === 'function') updateAdminUnreadBadge();
@@ -6092,6 +7011,9 @@
     renderSystemClock();
     initSystemClockInput();
     renderLoginLog();
+    loadSecureLoginLog();
+    renderSecureModeCard();
+    renderLegalInfoCard();
     setAdminTopBar('settings', closeAdminSettings);
   }
   function closeAdminSettings(){
@@ -6182,8 +7104,9 @@
       alert('Bu isimde bir üye zaten var.');
       return;
     }
-    const code = String(Math.floor(100000 + Math.random()*900000));
+    const code = newActivationCode();
     members.push({ name, water: 0, coffee: 0, waterCredits: 0, coffeeCredits: 0, status: "pending", phone, activationCode: code, password: code, role: "member", group: groupName || null, joinDate: toLocalDateStr(getNow()) });
+    if(secureMode){ const added = members[members.length - 1]; delete added.password; added.mustSetPassword = true; provisionNewMembers([added]); }
     if(groupName) lastCreatedGroupName = groupName;
 
     let referralMsg = '';
@@ -6431,6 +7354,7 @@
 
   function adminAddMeasurement(){
     const member = document.getElementById('progressAdminMember').value;
+    if(!requireHealthConsent(member)) return;
     const entry = {
       date: toLocalDateStr(getNow()),
       neck: document.getElementById('measNeck').value || null,
@@ -6468,6 +7392,7 @@
       alert('Lütfen geçerli bir kilo değeri gir.');
       return;
     }
+    if(!requireHealthConsent(member)) return;
     if(!progressEntries[member]) progressEntries[member] = [];
     const photoUrl = await uploadPhotoToStorage(pendingAdminProgressPhoto, 'progress');
     progressEntries[member].push({
@@ -6523,7 +7448,7 @@
     if(galEl){
       galEl.innerHTML = photos.length ? photos.map(p => `
         <div style="text-align:center;">
-          <img src="${p.photo}" style="width:64px; height:64px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
+          <img alt="" src="${p.photo}" style="width:64px; height:64px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
           <div style="font-size:9px; color:var(--muted); margin-top:3px;">${formatDateTr(p.date).slice(0,5)}${p.addedBy === 'admin' ? ' (sen)' : ''}</div>
         </div>`).join('') : '<div class="meal-empty">Henüz postür fotoğrafı yok.</div>';
     }
@@ -6902,7 +7827,7 @@
     card.style.display = 'block';
     list.innerHTML = recipients.map(m => `
       <div class="roster-row">
-        <span>${m.name}</span>
+        <span>${m.name}${(consentRecords[m.name] || {}).marketing === true ? '' : '<br><span style="font-size:10px; color:#e2664e;">kampanya/tanıtım iletisi onayı yok — yalnızca üyelikle ilgili bilgilendirme gönder</span>'}</span>
         <button class="btn btn-brass" style="font-size:11px; padding:6px 10px;" onclick="window.open('https://wa.me/${cleanPhoneForWhatsApp(m.phone)}?text=${encodeURIComponent(message)}','_blank')">WhatsApp'tan Gönder</button>
       </div>`).join('');
   }
@@ -7040,7 +7965,9 @@
 
   function downloadCSV(filename, rows){
     const csvContent = rows.map(row => row.map(cell => {
-      const val = String(cell ?? '');
+      let val = String(cell ?? '');
+      // Excel'de formül olarak çalışabilecek hücreleri (=, +, -, @ ile başlayan) metne çevir
+      if(/^[=+\-@\t\r]/.test(val)) val = "'" + val;
       return /[",\n;]/.test(val) ? '"' + val.replace(/"/g, '""') + '"' : val;
     }).join(';')).join('\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -7219,6 +8146,8 @@
             <button class="btn btn-brass" style="font-size:10.5px; padding:6px 10px; white-space:nowrap;" onclick="adminActivateMember('${m.name}')">Aktive Et</button>
           </div>
           ` : ''}
+          ${m.status !== 'pending' && m.mustSetPassword && m.activationCode ? `
+          <div style="font-size:10.5px; color:var(--muted); margin-bottom:8px;">🔑 Geçici şifre: <b style="color:var(--brass); letter-spacing:1px;">${m.activationCode}</b> — üye ilk girişinde kendi şifresini belirleyecek</div>` : ''}
           <div style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
             <input type="text" id="cardNewPassword-${mi}" class="calc-input" placeholder="Yeni şifre belirle" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
             <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminSetMemberPassword('${m.name}', ${mi})">🔑 Şifreyi Değiştir</button>
@@ -7732,7 +8661,8 @@
     const m = members.find(x => x.name === member);
     if(!m){ alert('Üye bulunamadı.'); return; }
     if(val.length < MIN_PASSWORD_LENGTH){ alert(`Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`); return; }
-    await setMemberPassword(m, val);
+    try{ await setMemberPassword(m, val); }
+    catch(err){ console.error(err); alert('Şifre değiştirilemedi: ' + err.message); return; }
     m.activationCode = val;     // üye bu geçici şifreyle girince kendi şifresini belirlemek zorunda kalır
     m.mustSetPassword = true;
     delete loginLocks[accountLockKey(m)];
@@ -7807,7 +8737,7 @@
           return `
           <div class="admin-sub" style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--line);">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:${t.photo ? '6px' : '0'};">
-              ${t.photo ? `<img src="${t.photo}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; cursor:pointer;" onclick="openPhotoLightbox('${t.photo}')">` : ''}
+              ${t.photo ? `<img alt="" src="${t.photo}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; cursor:pointer;" onclick="openPhotoLightbox('${t.photo}')">` : ''}
               <span>• ${t.text}</span>
             </div>
             ${t.photo ? `
@@ -8529,8 +9459,15 @@
       const hasAccepted = !!contractAccepted[member];
       const hasPhotoConsent = !!photoConsent[member];
       const parent = parentalConsents[member];
-      let rows = `<div style="margin-bottom:4px;">${hasAccepted ? '✅' : '❌'} Üyelik Sözleşmesi / KVKK: <b style="color:var(--chalk);">${hasAccepted ? 'Onaylandı' : 'Onaylanmadı'}</b></div>`;
-      rows += `<div style="margin-bottom:4px;">${hasPhotoConsent ? '✅' : '➖'} Fotoğraf Kullanım İzni: <b style="color:var(--chalk);">${hasPhotoConsent ? 'Verildi' : 'Verilmedi'}</b></div>`;
+      const rec = consentRecords[member] || {};
+      const current = hasCurrentConsentRecord(member);
+      const row = (ok, label, yes, no) => `<div style="margin-bottom:4px;">${ok ? '✅' : '➖'} ${label}: <b style="color:var(--chalk);">${ok ? yes : no}</b></div>`;
+      let rows = `<div style="margin-bottom:4px;">${hasAccepted ? '✅' : '❌'} Üyelik Sözleşmesi: <b style="color:var(--chalk);">${hasAccepted ? 'Kabul edildi' : 'Kabul edilmedi'}</b></div>`;
+      rows += `<div style="margin-bottom:4px;">${rec.kvkkRead ? '✅' : '❌'} Aydınlatma Metni: <b style="color:var(--chalk);">${rec.kvkkRead ? 'Okundu' + (rec.date ? ' (' + formatDateTr(rec.date) + (rec.time ? ' ' + rec.time : '') + ')' : '') : 'Okunmadı'}</b>${rec.kvkkRead && !current ? ' <span style="color:#e2664e;">· güncel metin henüz gösterilmedi</span>' : ''}</div>`;
+      rows += row(rec.abroad === true, 'Açık rıza — yurt dışı sunucu', 'Verildi', 'Yok');
+      rows += row(rec.health === true, 'Açık rıza — sağlık verileri', 'Verildi', 'Yok (sağlık verisi kaydedilemez)');
+      rows += row(hasPhotoConsent, 'Açık rıza — fotoğrafın tanıtımda kullanımı', 'Verildi', 'Yok');
+      rows += row(rec.marketing === true, 'Onay — kampanya/tanıtım iletisi', 'Verildi', 'Yok');
       if(parent){
         rows += `<div>👪 Veli/Ebeveyn: <b style="color:var(--chalk);">${parent.parentName || '—'}</b> · ${parent.parentPhone || '—'}</div>`;
       }
@@ -8608,54 +9545,35 @@
       `Onay Durumu: ${accepted ? `Onaylandı (v${contractAcceptedVersion[member] || 1}) — ${acceptedDate ? formatDateTrLong(acceptedDate) : 'tarih kaydedilmemiş'}` : 'Henüz onaylanmadı'}`,
       `Sağlık Beyanı: ${health ? (health.hasCondition ? ('Rahatsızlık belirtildi: ' + (health.details || 'detay girilmedi')) : 'Bilinen bir rahatsızlığı yok') : 'Beyan yok'}`,
       `Acil Durum Kişisi: ${emergency ? `${emergency.name} — ${emergency.phone}` : '—'}`,
-      `Fotoğraf Kullanım İzni: ${photo ? 'Verildi' : 'Verilmedi'}`,
+      `Aydınlatma Metni: ${(consentRecords[member] || {}).kvkkRead ? 'Okundu' : 'Okunmadı'} (metin sürümü ${(consentRecords[member] || {}).textVersion || '—'})`,
+      `Açık Rıza — Yurt Dışı Sunucuda Saklama: ${(consentRecords[member] || {}).abroad === true ? 'Verildi' : 'Yok'}`,
+      `Açık Rıza — Sağlık Verileri: ${(consentRecords[member] || {}).health === true ? 'Verildi' : 'Yok'}`,
+      `Açık Rıza — Fotoğrafın Tanıtımda Kullanımı: ${photo ? 'Verildi' : 'Yok'}`,
+      `Onay — Kampanya/Tanıtım İletisi: ${(consentRecords[member] || {}).marketing === true ? 'Verildi' : 'Yok'}`,
+      `Kayıt Zamanı: ${(consentRecords[member] || {}).date ? formatDateTrLong((consentRecords[member] || {}).date) + ' ' + ((consentRecords[member] || {}).time || '') : '—'}`,
     ];
     if(parent) lines.push(`Veli/Ebeveyn: ${parent.parentName || '—'} — ${parent.parentPhone || '—'}`);
     return lines;
   }
   function getContractFullText(member){
     const info = getContractInfoLines(member).join('\n');
-    return `TT FITNESS STUDIO
-Üyelik Sözleşmesi ve KVKK Aydınlatma Metni — Onay Belgesi
+    const consents = consentItems().map(it => `${it.title} (${it.required ? 'uygulama için gerekli' : 'isteğe bağlı'})\n${it.text}`).join('\n\n');
+    return `${legalInfo().name.toLocaleUpperCase('tr-TR')}
+Üyelik Sözleşmesi, Aydınlatma Metni ve Açık Rıza Beyanları — Kayıt Belgesi
 
 ${info}
 
 ÜYELİK SÖZLEŞMESİ
 
-1. Taraflar
-Bu sözleşme, TT Fitness Studio ("Salon") ile yukarıda bilgileri yer alan üye arasında akdedilmiştir.
+${sectionsToText(contractSections())}
 
-2. Üyelik Süresi ve Paket
-Üyenin paketi, üyelik kartında belirtilen başlangıç ve bitiş tarihleri arasında, belirlenen ders sayısı kadar geçerlidir.
+AYDINLATMA METNİ
 
-3. Devamsızlık ve Ders Hakkı
-Ders saati geçtiğinde, üyenin derse katılıp katılmadığına bakılmaksızın ders hakkı düşer. Grup seanslarında tek bir üye bile katılsa, ders yapılmış sayılır.
+${sectionsToText(noticeSections())}
 
-4. Ödeme
-Paket bedeli, paket başlangıcında veya salon yönetimiyle mutabık kalınan şekilde ödenir. Süresi geçen ödemeler için üye bilgilendirilir.
+AÇIK RIZA BEYANLARI
 
-5. İptal ve Devir
-Üyelik, salon yönetiminin onayı olmadan başka bir kişiye devredilemez.
-
-6. Sağlık Sorumluluğu
-Üye, spor yapmaya elverişli olduğunu beyan eder. Sağlık durumuna dair değişiklikleri salon yönetimine bildirmekle yükümlüdür.
-
-7. Kişisel Veriler
-Üyenin paylaştığı bilgiler yalnızca salon hizmetlerinin yürütülmesi amacıyla kullanılır, üçüncü kişilerle paylaşılmaz.
-
-KVKK AYDINLATMA METNİ
-
-1. Veri Sorumlusu
-Kişisel verileriniz, veri sorumlusu sıfatıyla TT Fitness Studio tarafından, 6698 sayılı Kişisel Verilerin Korunması Kanunu uyarınca işlenmektedir.
-
-2. İşlenen Veri Kategorileri
-Ad-soyad, telefon numarası, doğum tarihi, ölçüm ve gelişim verileri, beslenme kayıtları, ödeme bilgileri.
-
-3. İşleme Amaçları
-Üyelik ve ders programının yürütülmesi, ödeme ve paket takibi, antrenman ve beslenme danışmanlığı, yasal yükümlülüklerin yerine getirilmesi.
-
-4. Haklarınız
-KVKK'nın 11. maddesi uyarınca verilerinizin işlenip işlenmediğini öğrenme, düzeltilmesini veya silinmesini isteme hakkına sahipsiniz.
+${consents}
 
 Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Studio uygulaması üzerinden otomatik oluşturulmuştur.`;
   }
@@ -8711,30 +9629,29 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const parent = parentalConsents[member];
     const body = document.getElementById('contractDocumentBody');
 
+    const paras = (sections) => sections.map(([t, bodyText]) => `<p><b>${escapeHtml(t)}</b><br>${escapeHtml(bodyText).replace(/\n/g, '<br>')}</p>`).join('');
+    const log = ((consentRecords[member] || {}).log || []).slice(-12);
+    const keyLabel = { abroad: 'Yurt dışı sunucu', health: 'Sağlık verileri', photo: 'Fotoğrafın tanıtımda kullanımı', marketing: 'Kampanya/tanıtım iletisi' };
     body.innerHTML = `
       <div style="text-align:center; margin-bottom:20px;">
-        <div style="font-size:16px; font-weight:700;">TT FITNESS STUDIO</div>
-        <div style="font-size:13px; color:#555;">Üyelik Sözleşmesi ve KVKK Aydınlatma Metni — Onay Belgesi</div>
+        <div style="font-size:16px; font-weight:700;">${escapeHtml(legalInfo().name.toLocaleUpperCase('tr-TR'))}</div>
+        <div style="font-size:13px; color:#555;">Üyelik Sözleşmesi, Aydınlatma Metni ve Açık Rıza Beyanları — Kayıt Belgesi</div>
       </div>
 
       <div style="margin-bottom:16px; padding:12px; border:1px solid #ccc; border-radius:6px;">
-        ${getContractInfoLines(member).map(l => `${l}<br>`).join('')}
+        ${getContractInfoLines(member).map(l => `${escapeHtml(l)}<br>`).join('')}
       </div>
 
       <div style="margin-bottom:14px;"><b style="font-size:13.5px;">ÜYELİK SÖZLEŞMESİ</b></div>
-      <p><b>1. Taraflar</b><br>Bu sözleşme, TT Fitness Studio ("Salon") ile yukarıda bilgileri yer alan üye arasında akdedilmiştir.</p>
-      <p><b>2. Üyelik Süresi ve Paket</b><br>Üyenin paketi, üyelik kartında belirtilen başlangıç ve bitiş tarihleri arasında, belirlenen ders sayısı kadar geçerlidir.</p>
-      <p><b>3. Devamsızlık ve Ders Hakkı</b><br>Ders saati geçtiğinde, üyenin derse katılıp katılmadığına bakılmaksızın ders hakkı düşer. Grup seanslarında tek bir üye bile katılsa, ders yapılmış sayılır.</p>
-      <p><b>4. Ödeme</b><br>Paket bedeli, paket başlangıcında veya salon yönetimiyle mutabık kalınan şekilde ödenir. Süresi geçen ödemeler için üye bilgilendirilir.</p>
-      <p><b>5. İptal ve Devir</b><br>Üyelik, salon yönetiminin onayı olmadan başka bir kişiye devredilemez.</p>
-      <p><b>6. Sağlık Sorumluluğu</b><br>Üye, spor yapmaya elverişli olduğunu beyan eder. Sağlık durumuna dair değişiklikleri salon yönetimine bildirmekle yükümlüdür.</p>
-      <p><b>7. Kişisel Veriler</b><br>Üyenin paylaştığı bilgiler yalnızca salon hizmetlerinin yürütülmesi amacıyla kullanılır, üçüncü kişilerle paylaşılmaz.</p>
+      ${paras(contractSections())}
 
-      <div style="margin:14px 0;"><b style="font-size:13.5px;">KVKK AYDINLATMA METNİ</b></div>
-      <p><b>1. Veri Sorumlusu</b><br>Kişisel verileriniz, veri sorumlusu sıfatıyla TT Fitness Studio tarafından, 6698 sayılı Kişisel Verilerin Korunması Kanunu uyarınca işlenmektedir.</p>
-      <p><b>2. İşlenen Veri Kategorileri</b><br>Ad-soyad, telefon numarası, doğum tarihi, ölçüm ve gelişim verileri, beslenme kayıtları, ödeme bilgileri.</p>
-      <p><b>3. İşleme Amaçları</b><br>Üyelik ve ders programının yürütülmesi, ödeme ve paket takibi, antrenman ve beslenme danışmanlığı, yasal yükümlülüklerin yerine getirilmesi.</p>
-      <p><b>4. Haklarınız</b><br>KVKK'nın 11. maddesi uyarınca verilerinizin işlenip işlenmediğini öğrenme, düzeltilmesini veya silinmesini isteme hakkına sahipsiniz.</p>
+      <div style="margin:14px 0;"><b style="font-size:13.5px;">AYDINLATMA METNİ</b></div>
+      ${paras(noticeSections())}
+
+      <div style="margin:14px 0;"><b style="font-size:13.5px;">AÇIK RIZA BEYANLARI</b></div>
+      ${consentItems().map(it => `<p><b>${escapeHtml(it.title)}</b> (${it.required ? 'uygulama için gerekli' : 'isteğe bağlı'}) — <b>${(consentRecords[member] || {})[it.key] === true ? 'VERİLDİ' : 'YOK'}</b><br>${escapeHtml(it.text)}</p>`).join('')}
+      ${log.length ? `<div style="margin:14px 0 6px;"><b style="font-size:12.5px;">Rıza kayıt geçmişi</b></div>
+        ${log.map(e => `<div style="font-size:11.5px;">${formatDateTr(e.date)} ${escapeHtml(e.time || '')} — ${escapeHtml(keyLabel[e.key] || e.key)}: ${e.value ? 'verildi' : 'geri alındı / verilmedi'}</div>`).join('')}` : ''}
 
       <div style="margin-top:24px; font-size:11px; color:#777;">Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Studio uygulaması üzerinden otomatik oluşturulmuştur.</div>
     `;
@@ -9044,6 +9961,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
     const dayChanged = lastSeenDay !== null && lastSeenDay !== todayStr;
     lastSeenDay = todayStr;
     try{
+      purgeHealthDataWithoutConsent();
       runAutoAttendance();
       checkLeaderboardSeasonReset();
       if(memberSessionActive){
@@ -9084,6 +10002,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       if(memberSessionActive){ logOut(); document.getElementById('loginError').textContent = 'Bu hesap silinmiş.'; }
       return; // silinmekte olan hesap için ekranı yeniden çizme (silinen veriyi geri oluşturmasın)
     }
+    syncMemberViewOfAnnouncements();
     const safe = (fn) => { try{ fn(); }catch(e){ console.error('Yenileme hatası:', e); } };
     if(adminVisible){
       [renderPriceForm, renderConsumption, renderAdminAvailability, renderAdminMeals, renderProgramForm, renderAssignedPrograms,

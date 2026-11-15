@@ -1,0 +1,83 @@
+rules_version = '2';
+// TT Fitness Studio — veritabanı erişim kuralları (güvenli mod).
+// Özet: giriş yapmamış kimse üye verisi okuyamaz; üye yalnızca KENDİ kayıtlarını görür;
+// salonun üye hakkında tuttuğu kayıtları üye okuyabilir ama değiştiremez; yönetim notlarını göremez.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Gerçek (e-posta/şifre ile) giriş yapmış ve yetki belgesi olan kullanıcı
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function registered() { return signedIn() && exists(userPath()); }
+    function isAdmin() { return registered() && get(userPath()).data.role == 'admin'; }
+    function isMember(memberId) { return registered() && get(userPath()).data.memberId == memberId; }
+
+    // Herkese açık tek şey: uygulamanın hangi düzende çalışacağını söyleyen ayar
+    match /config/{doc} {
+      allow get: if true;
+      allow write: if isAdmin();
+    }
+    // Giriş dizini: telefon anahtarı → hesap nesli (yalnızca tek tek okunabilir, listelenemez)
+    match /login_index/{key} {
+      allow get: if true;
+      allow list, write: if isAdmin();
+    }
+    // Yetki belgeleri: rolü yalnızca yönetici yazar (üye kendi rolünü değiştiremez)
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow list, create, update: if isAdmin();
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
+    }
+    // Üye kaydı (ad, telefon, durum, su/kahve…)
+    match /members/{memberId} {
+      allow get: if isAdmin() || isMember(memberId);
+      allow list, create: if isAdmin();
+      allow delete: if isAdmin() || isMember(memberId);
+      // Üye kendi kaydında yalnızca "hesabım aktif, geçici şifrem artık yok" değişikliğini yapabilir
+      allow update: if isAdmin() || (isMember(memberId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'mustSetPassword', 'activationCode'])
+        && request.resource.data.get('status', 'active') == 'active'
+        && request.resource.data.get('mustSetPassword', true) == true);
+    }
+    // Üyenin kendi yazdıkları
+    match /member_self/{memberId} {
+      allow read, write: if isAdmin() || isMember(memberId);
+    }
+    // Salonun üye hakkında tuttukları: üye okur, değiştiremez (yalnızca hesabını silerken silebilir)
+    match /member_admin/{memberId} {
+      allow read: if isAdmin() || isMember(memberId);
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin() || isMember(memberId);
+    }
+    // Yönetim notları: üye göremez
+    match /member_private/{memberId} {
+      allow read, create, update: if isAdmin();
+      allow delete: if isAdmin() || isMember(memberId);
+    }
+    match /trainers/{id} {
+      allow read: if registered();
+      allow write: if isAdmin();
+    }
+    // Ortak/yönetim verileri: üyeler yalnızca fiyat, sözleşme sürümü ve sıralama özetini okuyabilir
+    match /app_data/{docId} {
+      allow read, write: if isAdmin();
+      allow get: if registered() && docId in ['state_priceSettings', 'state_appMeta', 'state_leaderboardShared'];
+    }
+    // Şifre sıfırlama isteği: giriş yapmadan bırakılabilir, yalnızca yönetim okur/siler
+    match /reset_requests/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['phone', 'date', 'code', 'ts'])
+        && request.resource.data.phone is string && request.resource.data.phone.size() > 0 && request.resource.data.phone.size() <= 30
+        && request.resource.data.code is string && request.resource.data.code.size() == 6
+        && request.resource.data.date is string && request.resource.data.date.size() <= 10
+        && request.resource.data.ts is number;
+      allow read, delete: if isAdmin();
+    }
+    // Giriş kayıtları: herkes yalnızca kendi girişini yazar, yalnızca yönetim okur
+    match /login_log/{id} {
+      allow create: if registered() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'who', 'ok', 'reason', 'ts', 'date', 'time']);
+      allow read, delete: if isAdmin();
+    }
+    // Yukarıda sayılmayan her şey kapalı
+  }
+}

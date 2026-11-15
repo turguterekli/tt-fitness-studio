@@ -4,7 +4,7 @@ const { newContext, openPage, login } = require('./lib');
 const N = 50;
 const results = [];
 const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+name+(extra?' — '+extra:'')); };
-const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+const store = page => page.evaluate(() => window.__fakeDump());
 const wait = (page, ms) => page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms).catch(()=>{});
 const ready = page => page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
 const clean = errs => errs.filter(e=>!/ERR_FAILED|Postür modeli|status of 404/.test(e));
@@ -55,6 +55,9 @@ const daysOf = i => [i % 7, (i + 2) % 7, (i + 4) % 7];
   // ---- 3) Diğer yönetici işlemleri ----
   await admin.evaluate(() => { switchAdminTab('announce'); switchCommTab('announce'); document.getElementById('announceTarget').value = 'all'; document.getElementById('announceMessage').value = 'Cuma günü salon 18:00\'de kapanacaktır.'; sendAnnouncement(); });
   check('announcement sent', await admin.evaluate(() => announcements.length === 1));
+  await admin.evaluate(n => { openAdminSubScreen('progresstrack'); adminAddMeasurement(); }, names[0]);
+  check('measurement refused without the member\'s health-data consent', await admin.evaluate(n => !(memberMeasurements[n] || []).length, names[0]) && (admin.__dialogs || []).some(d => d.includes('açık rızası')));
+  await admin.evaluate(n => { consentRecords[n] = { contract: true, kvkkRead: true, abroad: true, health: true, photo: false, marketing: false, date: '2026-11-01', textVersion: LEGAL_TEXT_VERSION }; }, names[0]);
   await admin.evaluate(n => { openAdminSubScreen('progresstrack'); document.getElementById('progressAdminMember').value = n; document.getElementById('measWaist').value = '88'; adminAddMeasurement(); }, names[0]);
   check('measurement added for a member', await admin.evaluate(n => (memberMeasurements[n] || []).length === 1, names[0]));
   await admin.evaluate(() => { switchAdminTab('finance'); setFinanceType('income'); document.getElementById('financeAmount').value = '1500'; addFinanceEntry(); });
@@ -88,7 +91,7 @@ const daysOf = i => [i % 7, (i + 2) % 7, (i + 4) % 7];
     if (await mp.isVisible('#view-contractgate')) {
       ok.gate++;
       await mp.selectOption('#gateBirthDay', String(1 + i % 28)); await mp.selectOption('#gateBirthMonth', String(1 + i % 12)); await mp.selectOption('#gateBirthYear', String(1975 + i % 25));
-      await mp.check('#contractAcceptCheckbox'); await mp.check('#kvkkReadCheckbox');
+      await mp.check('#contractAcceptCheckbox'); await mp.check('#kvkkReadCheckbox'); await mp.check('#abroadConsentCheckbox');
       if (i % 5 === 0) { await mp.check('#healthDeclHas'); await mp.fill('#healthDeclDetails', 'bel fıtığı'); await mp.check('#healthConsentCheckbox'); }
       if (i % 3 === 0) await mp.check('#photoConsentCheckbox');
       await mp.click('#contractAcceptBtn');

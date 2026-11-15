@@ -1,77 +1,67 @@
-# Şifre güvenliği: geçiş planı (henüz UYGULANMADI)
+# Güvenli moda geçiş rehberi
 
-## Bugünkü durum
+Uygulamada iki çalışma düzeni var. **Güvenli mod hazır ve test edildi, ama senin başlatman gerekiyor.**
 
-Uygulama kodunda yapılanlar (testi: `tests/security.test.js`):
+| | Eski düzen (şu an) | Güvenli mod |
+|---|---|---|
+| Giriş | Telefonda kontrol edilir | Firebase Authentication doğrular |
+| Şifre | Özet olarak veritabanında | Firebase'de; uygulama hiç görmez |
+| Veri | Uygulamayı açan herkesin cihazına iner | Yalnızca giriş yapanın kendi verisi iner |
+| Yetki | Uygulama kodu karar verir | Veritabanı kuralları sunucuda zorlar |
 
-- Şifreler artık **açık metin saklanmıyor**: rastgele tuz + PBKDF2 (SHA-256, 150.000 tur) özeti saklanır.
-  Eski şifreler, üye bir sonraki başarılı girişinde otomatik özetlenir.
-- Yönetimin verdiği kodla/geçici şifreyle giren üye, devam etmeden **kendi şifresini belirler** (en az 6 karakter).
-- "Beni hatırla" oturumu şifre özetine bağlı bir anahtarla doğrulanır; sahte oturum ve şifre
-  değiştikten sonraki eski oturum reddedilir.
-- 5 hatalı denemede hem cihaz hem **hesap** (tüm cihazlardan) 5 dakika kilitlenir.
-- Bilinmeyen numara ile yanlış şifre aynı hata mesajını verir.
-- Metinlerdeki `< > "` karakterleri yazılırken, buluta yazılırken ve buluttan okunurken süzülür (kod enjeksiyonu).
+## Geçiş — 3 adım (sırayı değiştirme)
 
-Kodla kapatılamayan, **hâlâ açık** olanlar:
+### 1) Firebase konsolunda giriş yöntemini aç
+[Firebase konsolu](https://console.firebase.google.com) → **tt-fitness-app** → Authentication → Sign-in method →
+**Email/Password** → Enable → Save.
 
-- Uygulama Firebase'e **anonim** giriş yapar ve tüm üye verisini (sağlık beyanları dahil) okur;
-  veritabanı kuralları kişiye göre kısıtlamaz. Uygulamayı açan herkes teknik olarak bu veriyi okuyabilir.
-- Şifre özetleri de okunabildiği için kısa/tahmin edilebilir şifreler deneme-yanılma ile bulunabilir.
-- Giriş kontrolü ve deneme sınırı telefonda çalışır; veritabanına doğrudan bağlanan biri bunları atlar.
+### 2) Uygulamada geçişi başlat
+Tam yetkili yönetici olarak gir → Ayarlar → **Veri Güvenliği** → yönetici şifreni yaz → **Güvenli moda geç**.
 
-Bunların çözümü aşağıdaki geçiştir.
+- Yönetici şifren en az 6 karakter olmalı (değilse önce değiştir).
+- Uygulama herkese (ikinci yönetici dahil) 8 karakterlik **geçici şifre** üretir ve listeler. Bunlar üye
+  kartlarında da görünür. Her üye ilk girişinde kendi şifresini belirler.
+- Aynı telefon numarası iki kayıtta varsa geçiş durur ve hangileri olduğunu söyler.
+- Eski kayıtlar silinmez; yalnızca yöneticinin okuyabildiği yedek olarak kalır.
 
-## Hedef
+### 3) Kuralları yayınla (asıl korumayı bu sağlar)
+Konsolda:
+- **Firestore Database → Rules**: repodaki `firestore.rules` dosyasının tamamını yapıştır → Publish.
+- **Storage → Rules**: repodaki `storage.rules` dosyasının tamamını yapıştır → Publish.
 
-Girişi Firebase Authentication yapsın; veritabanı kuralları kimin neyi okuyup yazabileceğini
-**sunucu tarafında** belirlesin.
+Bilgisayarda Firebase CLI varsa tek komut: `firebase deploy --only firestore:rules,storage --project tt-fitness-app`
 
-## Adımlar
+> 2. adımı yapıp 3. adımı yapmazsan uygulama güvenli modda çalışır ama veritabanı hâlâ herkese açıktır.
+> 3. adımı 2. adımdan ÖNCE yaparsan kimse giriş yapamaz.
 
-1. **Firebase konsolu** → Authentication → Sign-in method → *E-posta/Şifre*'yi aç. *(sen)*
-2. **Kod** — giriş, telefon numarasından üretilen bir e-posta (`905xxxxxxxxx@uye.ttfitness.app`)
-   ve şifreyle Firebase Authentication'a yapılır; yönetici üye eklerken hesap da açılır.
-   Mevcut üyeler ilk girişlerinde otomatik taşınır; taşınan üyenin `password` alanı silinir. *(Claude)*
-3. **Geçiş dönemi** — tüm aktif üyeler bir kez giriş yapana kadar eski kurallar kalır.
-4. **Kuralları sıkılaştır** — aşağıdaki taslak konsola yapıştırılır (Firestore → Rules). *(sen)*
-5. Anonim girişi kapat. *(sen)*
+### 4) İsteğe bağlı sıkılaştırma
+- Authentication → Sign-in method → **Anonymous** → kapat.
+- Authentication → Settings → Password policy → en az 8 karakter.
+- App Check'i aç (uygulama dışından erişimi zorlaştırır).
 
-Bu geçiş, üye verisinin üyeye göre ayrı belgelere bölünmesini de gerektirir (şu an bir veri türü
-tek belgede tüm üyeleri tutuyor; kural "sadece kendi verini oku" diyemez). Bu, kayıt düzeninde
-bir adım daha değişiklik demektir.
+## Güvenli modda kim neyi görebilir (`firestore.rules`)
 
-## Kural taslağı (hedef düzen için; bugünkü veri düzenine UYMAZ, olduğu gibi yapıştırma)
+| Kayıt | Üye | Yönetici | Giriş yapmamış |
+|---|---|---|---|
+| Kendi yazdıkları (öğün, mesaj, profil, onaylar, sağlık beyanı) | okur, yazar | okur, yazar | — |
+| Salonun onun hakkında tuttukları (program, paket, ödeme, ölçüm, yoklama) | sadece okur | okur, yazar | — |
+| Yönetim notları | — | okur, yazar | — |
+| Başka üyelerin herhangi bir verisi | — | okur, yazar | — |
+| Gelir/gider, tüm duyurular, giriş kayıtları | — | okur, yazar | — |
+| Fiyatlar, sözleşme sürümü, sıralama özeti (maskeli adlar) | sadece okur | okur, yazar | — |
+| Şifre sıfırlama isteği bırakma | — | okur, siler | sadece bırakır |
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{db}/documents {
-    function signedIn() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
-    function me() { return get(/databases/$(db)/documents/members/$(request.auth.uid)).data; }
-    function isAdmin() { return signedIn() && me().role == 'admin'; }
+`tests/secure.test.js` bunları gerçek Firebase emülatöründe, bu kural dosyasıyla dener (50 kontrol):
+ziyaretçi, anonim oturum, kendi kendine kayıt olan yabancı ve bir üye için toplam 30'dan fazla yetkisiz
+okuma/yazma denemesi reddedilir.
 
-    match /members/{uid} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow create, delete: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
-        && request.resource.data.role == resource.data.role);   // üye kendi rolünü değiştiremez
-    }
-    match /member_data/{uid}/{document=**} {      // üyeye özel tüm veriler
-      allow read, write: if isAdmin() || (signedIn() && request.auth.uid == uid);
-    }
-    match /shared/{doc} {                         // duyurular, antrenörler, fiyatlar
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
-    match /admin_only/{doc} {                     // finans, giriş kayıtları
-      allow read, write: if isAdmin();
-    }
-  }
-}
-```
-
-## O zamana kadar
-
-- Deneme/yönetici şifrelerini tahmin edilmesi zor şifrelerle değiştir.
-- Firebase konsolunda App Check'i açmak, uygulama dışından erişimi zorlaştırır (tam çözüm değildir).
+## Bilinen sınırlar
+- **İkinci yönetici:** kurallarda iki yönetici de tam yetkilidir; "kısıtlı yönetici" ayrımı yalnızca ekrandadır.
+- **Şifre sıfırlama sonrası eski cihaz:** yetki hemen silinir ve o cihaz kendini çıkışa zorlar. Kötü niyetli,
+  değiştirilmiş bir istemci açık bağlantısından en fazla yaklaşık 1 saat daha okuyabilir; yazamaz.
+- **Silinen üyenin giriş hesabı** Firebase Authentication'da kalır ama hiçbir veriye erişemez. İstersen
+  konsoldan (Authentication → Users) silebilirsin.
+- **API anahtarı:** `index.html` içindeki Firebase `apiKey` bir sır değildir; tasarım gereği herkese açıktır ve
+  `.env` dosyasına taşımak onu gizlemez (tarayıcıya giden her şey okunabilir). Koruma, yukarıdaki kurallardır.
+- **Yedek:** Yönetici → Ayarlar → Yedek ile elle indirilir. Otomatik günlük yedek için Firebase'in ücretli
+  planındaki zamanlanmış yedekleme gerekir.
