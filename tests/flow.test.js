@@ -14,7 +14,10 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.selectOption('#gateBirthDay', '5'); await page.selectOption('#gateBirthMonth', '3'); await page.selectOption('#gateBirthYear', '1995');
   await page.check('#contractAcceptCheckbox');
   check('contract alone is not enough (KVKK is a separate box)', await page.isDisabled('#contractAcceptBtn'));
+  check('no consent box is pre-checked', await page.evaluate(() => ['abroadConsentCheckbox','healthConsentCheckbox','photoConsentCheckbox','marketingConsentCheckbox'].every(id => document.getElementById(id).checked === false)));
   await page.check('#kvkkReadCheckbox');
+  check('reading the notice is still not enough: storage-abroad consent is separate', await page.isDisabled('#contractAcceptBtn'));
+  await page.check('#abroadConsentCheckbox');
   check('accept btn enabled', !(await page.isDisabled('#contractAcceptBtn')));
   await page.check('#healthDeclHas');
   await page.waitForTimeout(100);
@@ -50,9 +53,11 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('message persisted', persisted.msgs === 1);
   check('birthday persisted', persisted.bday === '1995-03-05');
   const consent = await page.evaluate(() => ({ rec: consentRecords[currentMemberName], health: healthDeclarations[currentMemberName] }));
-  check('consents recorded separately', consent.rec && consent.rec.contract && consent.rec.kvkkRead && consent.rec.health === true && consent.rec.photo === false, JSON.stringify(consent.rec));
+  check('consents recorded separately', consent.rec && consent.rec.contract && consent.rec.kvkkRead && consent.rec.health === true && consent.rec.photo === false && consent.rec.abroad === true && consent.rec.marketing === false && consent.rec.textVersion === 2 && !!consent.rec.time && (consent.rec.log || []).length === 4, JSON.stringify(consent.rec));
   await page.evaluate(() => openSettings());
-  await page.uncheck('#settingsHealthConsent');
+  await page.evaluate(() => { document.getElementById('settingsHealthConsent').checked = false; updateMyConsents('health'); });
+  check('withdrawing health consent asks for confirmation first', await page.evaluate(() => document.getElementById('customConfirmOverlay').style.display === 'flex'));
+  await page.evaluate(() => closeCustomConfirm(true));
   check('withdrawing health consent deletes health declaration', await page.evaluate(() => consentRecords[currentMemberName].health === false && !healthDeclarations[currentMemberName]));
   await flush(); await page.waitForTimeout(300);
   await page.evaluate(() => { getMemberMeals(currentMemberName)['Öğle'].push({name:'Salata', cal:200, portion:1, photo:'https://example.invalid/p.jpg', date: toLocalDateStr(getNow())}); });

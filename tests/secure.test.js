@@ -36,7 +36,7 @@ const clean = e => e.filter(x => !/ERR_FAILED|Postür|404|favicon|permission|Mis
     memberNotes['Elif Kara'] = 'GIZLI-YONETIM-NOTU'; memberNotes['Mert Aydın'] = 'MERT-HAKKINDA-GIZLI-NOT';
     healthDeclarations['Elif Kara'] = { hasCondition: true, details: 'ELIF-SAGLIK-BILGISI' };
     healthDeclarations['Mert Aydın'] = { hasCondition: true, details: 'mert-saglik' };
-    contractAccepted['Mert Aydın'] = true; contractAcceptedVersion['Mert Aydın'] = CONTRACT_VERSION; getMemberProfile('Mert Aydın').birthday = '1990-01-01';
+    contractAccepted['Mert Aydın'] = true; contractAcceptedVersion['Mert Aydın'] = CONTRACT_VERSION; consentRecords['Mert Aydın'] = { contract: true, kvkkRead: true, abroad: true, health: true, photo: false, marketing: false, date: '2026-11-01', textVersion: LEGAL_TEXT_VERSION }; consentRecords['Elif Kara'] = { contract: true, kvkkRead: true, abroad: true, health: true, photo: false, marketing: false, date: '2026-11-01', textVersion: LEGAL_TEXT_VERSION }; getMemberProfile('Mert Aydın').birthday = '1990-01-01';
     memberPayments['Elif Kara'] = [{ amount: 9999, note: 'ELIF-ODEME', date: '2026-11-01' }];
     memberPayments['Mert Aydın'] = [{ amount: 1500, note: 'mert-odeme', date: '2026-11-01' }];
     getMemberMeals('Elif Kara')['Öğle'].push({ name: 'ELIF-OGUN', cal: 1, portion: 1, photo: null, date: '2026-11-10' });
@@ -162,7 +162,7 @@ const clean = e => e.filter(x => !/ERR_FAILED|Postür|404|favicon|permission|Mis
   await forcePw(d, 'Yeni-Uye-Sifre-1');
   check('6.3 new member reaches the consent screen', await d.isVisible('#view-contractgate'));
   await d.selectOption('#gateBirthDay', '5'); await d.selectOption('#gateBirthMonth', '3'); await d.selectOption('#gateBirthYear', '1995');
-  await d.check('#contractAcceptCheckbox'); await d.check('#kvkkReadCheckbox'); await d.click('#contractAcceptBtn'); await d.evaluate(() => skipOnboarding());
+  await d.check('#contractAcceptCheckbox'); await d.check('#kvkkReadCheckbox'); await d.check('#abroadConsentCheckbox'); await d.click('#contractAcceptBtn'); await d.evaluate(() => skipOnboarding());
   await wait(d, 3500);
   check('6.4 admin sees the new member as active with consent recorded', await a.evaluate(() => { const m = members.find(x => x.name === 'Yeni Üye'); return m.status === 'active' && !m.mustSetPassword && !m.activationCode && contractAccepted['Yeni Üye'] === true && !!consentRecords['Yeni Üye']; }));
   await d.reload(); await ready(d); await wait(d, 1500);

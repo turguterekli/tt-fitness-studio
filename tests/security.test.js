@@ -140,7 +140,7 @@ const memberDoc = (s, name) => Object.values(Object.fromEntries(Object.entries(s
   await page.fill('#gateEmergencyName', XSS); await page.fill('#gateEmergencyPhone', XSS);
   await page.selectOption('#gateBirthDay', '5'); await page.selectOption('#gateBirthMonth', '3'); await page.selectOption('#gateBirthYear', '1995');
   await page.check('#healthDeclHas'); await page.fill('#healthDeclDetails', XSS); await page.check('#healthConsentCheckbox');
-  await page.check('#contractAcceptCheckbox'); await page.check('#kvkkReadCheckbox');
+  await page.check('#contractAcceptCheckbox'); await page.check('#kvkkReadCheckbox'); await page.check('#abroadConsentCheckbox');
   await page.click('#contractAcceptBtn');
   await page.evaluate(() => skipOnboarding());
   await page.fill('#goalInput', XSS); await page.evaluate(() => saveGoalNote());

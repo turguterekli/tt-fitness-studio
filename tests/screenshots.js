@@ -14,7 +14,7 @@ const targets = [
     const shot = async name => { await page.waitForTimeout(2600); await page.screenshot({ path: path.join(OUT, t.dir, name + '.png') }); };
     await login(page, '0542 249 32 27', '1234');
     await page.evaluate(() => {
-      contractAccepted[currentMemberName] = true; contractAcceptedVersion[currentMemberName] = CONTRACT_VERSION;
+      contractAccepted[currentMemberName] = true; contractAcceptedVersion[currentMemberName] = CONTRACT_VERSION; consentRecords[currentMemberName] = { contract: true, kvkkRead: true, abroad: true, health: true, photo: false, marketing: false, date: '2026-11-01', textVersion: LEGAL_TEXT_VERSION };
       getMemberProfile(currentMemberName).birthday = '1994-04-12';
       memberPackages[currentMemberName] = { size: 12, used: 5, start: '2026-10-20', end: '2026-11-20' };
       goalNotes[currentMemberName] = 'Yıl sonuna kadar 80 kiloya inmek';
