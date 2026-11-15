@@ -76,6 +76,7 @@ npm run sync       # web dosyalarını android/ ve ios/ içine kopyalar
 | `play-feature-graphic-1024x500.png` | Play Store tanıtım görseli |
 | `play-icon-512.png`, `appstore-icon-1024.png` | Mağaza ikonları (düşük çözünürlüklü logodan) |
 | `MAGAZA-METINLERI.md` | Açıklama metinleri ve veri formu cevap taslakları |
-| `GUVENLIK-PLANI.md` | Şifre güvenliği için geçiş planı ve kural taslağı |
+| `GUVENLIK-PLANI.md` | Güvenli moda geçiş rehberi (3 adım) |
+| `KONTROL-LISTELERI.md` | Güvenlik ve yayın öncesi kontrol listelerinin durumu |
 
 Ekran görüntülerini yeniden üretmek için: `cd tests && node screenshots.js`

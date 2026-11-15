@@ -1,0 +1,55 @@
+# Her değişiklikte: testler (sahte Firebase + gerçek kurallarla emülatör), kütüphane açığı taraması ve kod taraması.
+name: Kontroller
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"   # haftada bir, yeni duyurulan açıklar için
+
+permissions:
+  contents: read
+
+jobs:
+  testler:
+    name: Testler
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Test bağımlılıkları
+        working-directory: tests
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Akış, eşitleme, güvenlik testleri (sahte Firebase)
+        working-directory: tests
+        run: npm test
+      - name: Güvenli mod testi (Firebase emülatörü + gerçek kurallar)
+        run: npx --yes firebase-tools@13 emulators:exec --only auth,firestore,storage --project demo-ttfitness "cd tests && node secure.test.js"
+
+  kutuphane-taramasi:
+    name: Kütüphane açığı taraması
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci && npm audit --audit-level=high --omit=dev
+
+  kod-taramasi:
+    name: Kod güvenlik taraması (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: javascript }
+      - uses: github/codeql-action/analyze@v3

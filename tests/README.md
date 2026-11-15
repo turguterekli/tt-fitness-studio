@@ -15,4 +15,7 @@ npm run smoke   # üye / tam yetkili admin / kısıtlı admin ekranlarındaki he
 - `sync.test.js` — iki cihaz aynı anda, eski veriden aktarım, tarih ilerlemesi, yoklama (`legacy` argümanıyla: kısıtlı veritabanı kuralları)
 - `load.test.js` — 50 üyelik yük testi: yönetici 50 üye ekler, her üye giriş yapar; 8 gün sonrası yoklama (`npm run load`)
 - `security.test.js` — saldırı senaryoları: şifre saklama, sahte oturum, deneme sınırı, yetki, kod enjeksiyonu; sonunda bilinen açıkları listeler
+- `secure.test.js` — GÜVENLİ MOD: gerçek Firebase SDK + yerel emülatör + gerçek `firestore.rules`/`storage.rules`; geçiş, üye izolasyonu, yetkisiz erişim denemeleri. Emülatör gerekir:
+  `npx firebase-tools@13 emulators:exec --only auth,firestore,storage --project demo-ttfitness "cd tests && node secure.test.js"`
+  (`node smoke.test.js member secure` de aynı ortamda çalışır)
 - `vendor.test.js` — repodaki gerçek Firebase SDK / jsPDF / fontların yüklendiğini ve CDN isteği kalmadığını doğrular

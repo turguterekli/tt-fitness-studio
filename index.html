@@ -2,17 +2,35 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <!-- Ana ekrana eklenmiş uygulama bazen eski sürümü önbellekten göstermeye devam edebiliyor
      (silip tekrar eklemeyi gerektiren asıl sebep budur) — bu etiketler tarayıcıyı sayfayı
      önbelleğe almaması için uyarıyor, güncellemelerin daha güvenilir yansımasına yardımcı olur. -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>TT Fitness Studio</title>
+<title>TT Fitness Studio — Üye Uygulaması</title>
+<meta name="description" content="TT Fitness Studio üyeleri için ders programı, üyelik ve paket takibi, beslenme günlüğü ve gelişim takibi uygulaması.">
+<link rel="canonical" href="https://turguterekli.github.io/tt-fitness-studio/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="TT Fitness Studio">
+<meta property="og:title" content="TT Fitness Studio — Üye Uygulaması">
+<meta property="og:description" content="Ders programı, üyelik ve paket takibi, beslenme günlüğü ve gelişim takibi.">
+<meta property="og:url" content="https://turguterekli.github.io/tt-fitness-studio/">
+<meta property="og:image" content="https://turguterekli.github.io/tt-fitness-studio/og-image.png">
+<meta property="og:image:width" content="1024">
+<meta property="og:image:height" content="500">
+<meta property="og:locale" content="tr_TR">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"TT Fitness Studio","url":"https://turguterekli.github.io/tt-fitness-studio/","applicationCategory":"HealthApplication","operatingSystem":"Web, Android, iOS","inLanguage":"tr","description":"TT Fitness Studio üyeleri için ders programı, üyelik, beslenme ve gelişim takibi uygulaması."}</script>
+
+<!-- Güvenlik: sayfanın yalnızca kendi dosyalarını ve Firebase'i kullanmasına izin verilir (başka bir yerden
+     kod yüklenemez, veri başka bir adrese gönderilemez); başka sitelere yönlendirirken adres bilgisi paylaşılmaz. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.googleusercontent.com http://127.0.0.1:9199; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasestorage.app https://cdn.jsdelivr.net http://127.0.0.1:8080 http://127.0.0.1:9099 http://127.0.0.1:9199 ws://127.0.0.1:8080; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="no-referrer">
 
 <!-- PWA: Ana ekrana eklendiğinde gerçek bir uygulama gibi açılması için -->
-<meta name="theme-color" content="#CE997A">
+<meta name="theme-color" content="#15171B" id="themeColorMeta">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -103,14 +121,20 @@
        ortalama/boşluk hesaplaması devre dışı kaldığı için altta/üstte fazladan boşluk kalmaz.
        Üst bar (Anasayfa/Arama başlıkları vb.), telefonun gerçek çentiği/durum çubuğu/Dynamic
        Island'ının arkasında kalıp tıklanamaz olmasın diye fazladan güvenli alan payı alıyor. */
+    /* Yükseklik: "%100" iPhone'da (özellikle ana ekrandan açıldığında) ekranın en altını kaplamıyor,
+       arkadaki koyu zemin siyah bir şerit olarak görünüyordu. Görünen alanı izleyen 100dvh kullanılır
+       (eski tarayıcılar için 100vh yedeği) ve arkadaki zemin uygulamayla aynı renge boyanır. */
+    html{ background:#15171B; }
     html, body{
-      position:fixed !important; inset:0 !important; width:100% !important; height:100% !important;
+      position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:auto !important;
+      width:100% !important; height:100vh !important; height:100dvh !important;
       overflow:hidden !important; overscroll-behavior:none; touch-action:pan-y;
     }
-    body{ padding:0 !important; margin:0 !important; display:block !important; }
+    body{ padding:0 !important; margin:0 !important; display:block !important; background:var(--page-bg, #15171B) !important; }
     .phone{
-      position:absolute !important; inset:0 !important; width:100% !important; height:100% !important;
-      max-width:100% !important; max-height:100% !important;
+      position:absolute !important; top:0 !important; left:0 !important; right:0 !important; bottom:auto !important;
+      width:100% !important; height:100vh !important; height:100dvh !important;
+      max-width:100% !important; max-height:none !important;
       border-radius:0 !important; border:none !important; box-shadow:none !important;
     }
     /* !important: bu değerler dosyanın aşağısındaki genel .topbar/.screen/.tabbar
@@ -133,7 +157,28 @@
   }
   /* Butonlara/sekmelere dokununca 300ms'lik gecikme ya da çift-dokunuşla yakınlaştırma
      olmasın diye — normal bir uygulamadaki gibi anında tepki versin. */
-  .btn, .tab, .nav-drawer-item, input, select, textarea{ touch-action:manipulation; }
+  .btn, .tab, .nav-drawer-item, input, select, textarea, button, [onclick]{ touch-action:manipulation; }
+  /* Butonlara uzun basınca metin seçilmesin / iOS menüsü açılmasın (yazı alanları hariç) */
+  button, .btn, .tab, .tabbar, .topbar, .day-chip, .prog-day-chip, .avail-chip, .nav-drawer-item, .meal-add, .rm, [onclick]{
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+  }
+  /* Dokunulduğu anda tepki: sekmeler ve dokunulabilir satırlar da basılınca hafifçe küçülür */
+  .tab, .day-chip, .prog-day-chip, .avail-chip, .meal-add, .nav-drawer-item{ transition:transform .12s ease-out, background .12s ease-out; }
+  .tab:active, .day-chip:active, .prog-day-chip:active, .avail-chip:active, .meal-add:active{ transform:scale(0.95); }
+  .nav-drawer-item:active{ background:var(--panel-2); }
+  /* Ekran değişiminde kısa bir belirme (hareketi azalt ayarı açıksa kapalı) */
+  @keyframes viewIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+  .view.active, .aview.active{ animation:viewIn .18s ease-out; }
+  @media (prefers-reduced-motion: reduce){
+    .view.active, .aview.active{ animation:none; }
+    .btn, .tab, .day-chip, .prog-day-chip, .avail-chip, .meal-add{ transition:none; }
+  }
+  /* Fare olmayan (dokunmatik) cihazlarda "üzerine gelince" görünümü dokunuştan sonra takılı kalmasın */
+  @media (hover: none){
+    .btn-brass:hover{ background:var(--brass); }
+    .btn-ghost:hover{ border-color:var(--line); color:var(--chalk); }
+    .nav-drawer-item:hover{ background:none; }
+  }
 
   .screen{flex:1; overflow-y:auto; padding:4px 20px 24px; scrollbar-width:none;}
   .screen::-webkit-scrollbar{display:none;}
@@ -304,6 +349,33 @@
   <script src="vendor/firebase-storage-compat.js"></script>
 </head>
 <body>
+<script>
+  // HTTPS zorunlu: http ile açılırsa güvenli adrese yönlendir (yerel geliştirme hariç)
+  if(location.protocol === 'http:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)){ location.replace('https:' + location.href.slice(5)); }
+  // Uygulama başka bir sitenin içine gömülerek (çerçeve) açılamaz — sahte sayfa üzerinden tıklatma saldırısına karşı
+  if(window.top !== window.self){ try{ window.top.location = window.self.location; }catch(e){ document.documentElement.style.display = 'none'; } }
+  // Beklenmeyen hatalar: uygulama sessizce takılı kalmasın; kullanıcıya kısa bir uyarı gösterilir, ayrıntı konsola yazılır
+  (function(){
+    let lastShown = 0;
+    function report(kind, message){
+      console.error('[beklenmeyen hata]', kind, message);
+      const now = Date.now();
+      if(now - lastShown < 15000) return;
+      lastShown = now;
+      const el = document.getElementById('globalErrorToast');
+      if(!el) return;
+      el.style.display = 'block';
+      setTimeout(function(){ el.style.display = 'none'; }, 6000);
+    }
+    window.addEventListener('error', function(e){ if(e && e.message && !/ResizeObserver|Script error/.test(e.message)) report('hata', e.message); });
+    window.addEventListener('unhandledrejection', function(e){
+      const msg = e && e.reason ? (e.reason.message || String(e.reason)) : '';
+      if(/permission|offline|network|unavailable|auth\//i.test(msg)) return; // bağlantı/yetki hataları ilgili yerde zaten gösteriliyor
+      report('işlem', msg);
+    });
+  })();
+</script>
+<div id="globalErrorToast" style="display:none; position:fixed; left:16px; right:16px; bottom:calc(90px + env(safe-area-inset-bottom)); z-index:99997; background:#2a1512; border:1px solid #C1432B; color:#ECEAE4; font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; line-height:1.5; padding:10px 14px; border-radius:12px; text-align:center;">Bir şeyler ters gitti. Sayfayı yenileyip tekrar dene; sorun sürerse salon yönetimine haber ver.</div>
 
 <div id="cloudLoadingOverlay" style="position:fixed; inset:0; z-index:99999; background:#15171B; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; font-family:'IBM Plex Sans', sans-serif;">
   <div style="width:42px; height:42px; border-radius:50%; border:3px solid rgba(206,153,122,0.25); border-top-color:#CE997A; animation:cloudSpin 0.8s linear infinite;"></div>
@@ -771,7 +843,7 @@
           <input type="file" id="progressPhotoInput" accept="image/*" style="display:none" onchange="handleProgressPhoto(event)">
           <button class="btn btn-ghost" onclick="document.getElementById('progressPhotoInput').click()">📷</button>
         </div>
-        <img id="progressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
+        <img alt="" id="progressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
         <button class="btn btn-brass btn-full" onclick="addProgressEntry()">+ Ölçüm Ekle</button>
       </div>
 
@@ -1358,7 +1430,7 @@
       </div>
 
       <div id="photoLightbox" onclick="closePhotoLightbox()" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.9); z-index:70; align-items:center; justify-content:center; padding:20px;">
-        <img id="photoLightboxImg" style="max-width:100%; max-height:100%; border-radius:10px;">
+        <img alt="" id="photoLightboxImg" style="max-width:100%; max-height:100%; border-radius:10px;">
       </div>
 
       <div id="timePickerOverlay" style="display:none; position:absolute; inset:0; background:rgba(0,0,0,0.85); z-index:76; align-items:flex-end; justify-content:center;" onclick="if(event.target===this) closeTimePicker();">
@@ -1465,7 +1537,7 @@
             <input type="file" id="adminProgressPhotoInput" accept="image/*" style="display:none" onchange="handleAdminProgressPhoto(event)">
             <button class="btn btn-ghost" onclick="document.getElementById('adminProgressPhotoInput').click()">📷</button>
           </div>
-          <img id="adminProgressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
+          <img alt="" id="adminProgressPhotoPreview" style="display:none; width:100%; max-height:120px; object-fit:cover; border-radius:10px; margin-bottom:8px;">
           <button class="btn btn-brass btn-full" onclick="adminAddProgressEntry()">+ Kilo Kaydı Ekle</button>
         </div>
 
@@ -1756,6 +1828,13 @@
           <div id="adminPasswordChangeMsg" style="font-size:11.5px; margin-top:8px; text-align:center;"></div>
         </div>
 
+        <div class="card" id="backupCard" style="margin-bottom:14px;">
+          <div class="card-label">YEDEK</div>
+          <div style="font-size:11.5px; color:var(--muted); line-height:1.6; margin-bottom:10px;">Tüm üye ve salon verilerinin bir kopyasını dosya olarak indirir. Dosya kişisel veri içerir; güvenli bir yerde sakla ve kimseyle paylaşma. Ayda en az bir kez yedek alman önerilir.</div>
+          <button class="btn btn-ghost btn-full" onclick="downloadBackup()">💾 Yedeği indir</button>
+          <div id="backupMsg" style="font-size:11.5px; margin-top:8px; color:var(--muted);"></div>
+        </div>
+
         <div class="card" id="legalInfoCard" style="margin-bottom:14px;">
           <div class="card-label">VERİ SORUMLUSU BİLGİLERİ</div>
           <div style="font-size:11.5px; color:var(--muted); line-height:1.6; margin-bottom:10px;">Bu bilgiler üyelere gösterilen sözleşme ve aydınlatma metninde yer alır. Boş bırakılırsa metinler eksik kalır.</div>
@@ -1980,7 +2059,7 @@
   }
 
   // Kullanıcının yazdığı serbest metinleri (mesaj, öğün adı, not vb.) ekrana HTML olarak
-  // basmadan önce güvenli hale getirir — aksi halde mesaja yazılan <img onerror=...> gibi
+  // basmadan önce güvenli hale getirir — aksi halde mesaja yazılan <img alt="" onerror=...> gibi
   // bir içerik yönetici ekranında kod olarak çalışabiliyordu (XSS).
   function escapeHtml(value){
     return String(value == null ? '' : value)
@@ -2005,7 +2084,8 @@
     const el = document.getElementById('cloudSaveIndicator');
     const dot = document.getElementById('cloudSaveDot');
     const text = document.getElementById('cloudSaveText');
-    if(el) el.style.display = 'flex';
+    const loggedOut = document.getElementById('logged-out-screen');
+    if(el && !(loggedOut && loggedOut.style.display !== 'none')) el.style.display = 'flex'; // giriş ekranında gösterme
     if(dot) dot.style.background = '#CE997A';
     if(text) text.textContent = 'Kaydediliyor…';
   }
@@ -3588,7 +3668,7 @@
     const photos = (posturePhotos[currentMemberName] || []).filter(p => p.addedBy === 'admin').slice().reverse();
     el.innerHTML = photos.length ? photos.map(p => `
       <div style="flex:0 0 auto; text-align:center;">
-        <img src="${p.photo}" style="width:70px; height:70px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
+        <img alt="" src="${p.photo}" style="width:70px; height:70px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
         <div style="font-size:9px; color:var(--muted); margin-top:3px;">${formatDateTr(p.date).slice(0,5)}</div>
       </div>`).join('') : '<div class="meal-empty">Yönetici henüz bir postür fotoğrafı eklemedi.</div>';
   }
@@ -3978,7 +4058,7 @@
       const delta = prev ? Math.round((e.weight - prev.weight)*10)/10 : null;
       return `
       <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:12px;">
-        ${e.photo ? `<img src="${e.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; cursor:pointer;" onclick="window.open('${e.photo}','_blank')">` : ''}
+        ${e.photo ? `<img alt="" src="${e.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; cursor:pointer;" onclick="window.open('${e.photo}','_blank')">` : ''}
         <span style="color:var(--muted); white-space:nowrap;">${formatDateTr(e.date).slice(0,5)}</span>
         <span style="flex:1; font-weight:600;">${e.weight} kg</span>
         ${delta !== null ? `<span style="color:${delta<=0?'var(--green)':'var(--brass)'}; font-size:11px;">${delta>0?'▲':delta<0?'▼':'–'} ${Math.abs(delta)} kg</span>` : ''}
@@ -4058,11 +4138,11 @@
       <div class="card-label">ESKİ HALİ / YENİ HALİ</div>
       <div style="display:flex; gap:8px; margin-bottom:14px;">
         <div style="flex:1; text-align:center;">
-          <img src="${before.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
+          <img alt="" src="${before.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
           <div style="font-size:10.5px; color:var(--muted); margin-top:5px;">${formatDateTr(before.date)} · ${before.weight} kg</div>
         </div>
         <div style="flex:1; text-align:center;">
-          <img src="${after.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
+          <img alt="" src="${after.photo}" style="width:100%; height:150px; object-fit:cover; border-radius:10px;">
           <div style="font-size:10.5px; color:var(--muted); margin-top:5px;">${formatDateTr(after.date)} · ${after.weight} kg</div>
         </div>
       </div>`;
@@ -4570,7 +4650,7 @@
         ${dayItems.length ? dayItems.map((m)=>`
           <div class="meal-item">
             <span style="display:flex; align-items:center; gap:8px;">
-              ${m.photo ? `<img src="${m.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; flex-shrink:0;">` : ''}
+              ${m.photo ? `<img alt="" src="${m.photo}" style="width:30px; height:30px; border-radius:7px; object-fit:cover; flex-shrink:0;">` : ''}
               <span>${escapeHtml(m.name)}${m.portion && m.portion !== 1 ? ` <span style="color:var(--muted); font-size:11px;">(${m.portion} porsiyon${m.grams ? ', ' + m.grams + 'g' : ''})</span>` : (m.grams ? ` <span style="color:var(--muted); font-size:11px;">(${m.grams}g)</span>` : '')}</span>
             </span>
             <span style="display:flex; align-items:center; gap:10px;">
@@ -4599,7 +4679,7 @@
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
               <input type="file" id="addPhoto-${ki}" accept="image/*" capture="environment" style="display:none" onchange="handleMealPhoto(event, ${ki})">
               <button class="btn btn-ghost" style="flex:1; font-size:12.5px;" onclick="document.getElementById('addPhoto-${ki}').click()">📷 Fotoğraf Ekle</button>
-              <img id="addPhotoPreview-${ki}" style="display:none; width:38px; height:38px; border-radius:8px; object-fit:cover;">
+              <img alt="" id="addPhotoPreview-${ki}" style="display:none; width:38px; height:38px; border-radius:8px; object-fit:cover;">
             </div>
             <button class="btn btn-brass btn-full" id="confirmAddMealBtn-${ki}" onclick="confirmAddMeal('${key}', ${ki})">Ekle</button>
             <div id="addHint-${ki}" style="font-size:11px; color:var(--muted); margin-top:8px;">Yemek adını yazdıkça gramaj ve kaloriyi tahmin etmeye çalışırım, istersen kendin de değiştirebilirsin.</div>
@@ -6188,6 +6268,14 @@
       document.getElementById('themeDarkBtn').classList.replace('btn-ghost','btn-brass');
       document.getElementById('themeLightBtn').classList.replace('btn-brass','btn-ghost');
     }
+    applyPageChromeColor(mode === 'light' ? '#FAFAF8' : '#15171B');
+  }
+  // Telefonun durum çubuğu ve uygulamanın arkasındaki zemin, tema rengiyle aynı olsun
+  function applyPageChromeColor(color){
+    document.documentElement.style.setProperty('--page-bg', color);
+    document.documentElement.style.background = color;
+    const meta = document.getElementById('themeColorMeta');
+    if(meta) meta.setAttribute('content', color);
   }
 
   function handlePhotoUpload(event){
@@ -6723,7 +6811,28 @@
     renderPasswordResetRequests();
   }
 
+  // Tüm veriyi tek bir dosyaya döker (yalnızca tam yetkili yönetici). Fotoğrafların kendisi değil, bağlantıları yedeklenir.
+  function downloadBackup(){
+    if(adminTrainerScope){ alert('Yedeği yalnızca tam yetkili yönetici alabilir.'); return; }
+    const strip = (m) => { const c = { ...m }; delete c.pw; delete c.password; delete c.activationCode; return c; };
+    const data = { uygulama: 'TT Fitness Studio', tarih: new Date().toISOString(), duzen: secureMode ? 'guvenli' : 'eski',
+      members: members.map(strip), trainers, memberPackages, state: {} };
+    allStateRefs.forEach(([ref, field]) => { if(!['loginLocks'].includes(field)) data.state[field] = ref; });
+    const blob = new Blob([JSON.stringify(sanitizeForFirestore(data), null, 1)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'tt-fitness-yedek-' + toLocalDateStr(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    appMeta.lastBackup = toLocalDateStr(new Date());
+    const msg = document.getElementById('backupMsg');
+    if(msg){ msg.style.color = 'var(--green)'; msg.textContent = 'Yedek indirildi ✓'; }
+  }
   function renderLegalInfoCard(){
+    const backupCard = document.getElementById('backupCard');
+    if(backupCard) backupCard.style.display = adminTrainerScope ? 'none' : 'block';
+    const backupMsg = document.getElementById('backupMsg');
+    if(backupMsg && !backupMsg.textContent) backupMsg.textContent = appMeta.lastBackup ? 'Son yedek: ' + formatDateTr(appMeta.lastBackup) : 'Henüz yedek alınmadı.';
     const card = document.getElementById('legalInfoCard');
     if(!card) return;
     card.style.display = adminTrainerScope ? 'none' : 'block';
@@ -7339,7 +7448,7 @@
     if(galEl){
       galEl.innerHTML = photos.length ? photos.map(p => `
         <div style="text-align:center;">
-          <img src="${p.photo}" style="width:64px; height:64px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
+          <img alt="" src="${p.photo}" style="width:64px; height:64px; border-radius:8px; object-fit:cover; cursor:pointer;" onclick="window.open('${p.photo}','_blank')">
           <div style="font-size:9px; color:var(--muted); margin-top:3px;">${formatDateTr(p.date).slice(0,5)}${p.addedBy === 'admin' ? ' (sen)' : ''}</div>
         </div>`).join('') : '<div class="meal-empty">Henüz postür fotoğrafı yok.</div>';
     }
@@ -7856,7 +7965,9 @@
 
   function downloadCSV(filename, rows){
     const csvContent = rows.map(row => row.map(cell => {
-      const val = String(cell ?? '');
+      let val = String(cell ?? '');
+      // Excel'de formül olarak çalışabilecek hücreleri (=, +, -, @ ile başlayan) metne çevir
+      if(/^[=+\-@\t\r]/.test(val)) val = "'" + val;
       return /[",\n;]/.test(val) ? '"' + val.replace(/"/g, '""') + '"' : val;
     }).join(';')).join('\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -8626,7 +8737,7 @@
           return `
           <div class="admin-sub" style="margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid var(--line);">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:${t.photo ? '6px' : '0'};">
-              ${t.photo ? `<img src="${t.photo}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; cursor:pointer;" onclick="openPhotoLightbox('${t.photo}')">` : ''}
+              ${t.photo ? `<img alt="" src="${t.photo}" style="width:44px; height:44px; border-radius:8px; object-fit:cover; flex-shrink:0; cursor:pointer;" onclick="openPhotoLightbox('${t.photo}')">` : ''}
               <span>• ${t.text}</span>
             </div>
             ${t.photo ? `

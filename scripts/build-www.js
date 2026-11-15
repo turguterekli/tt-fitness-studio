@@ -2,7 +2,7 @@
 // Web sitesi (GitHub Pages) repo kökünden yayınlanmaya devam eder; www/ sadece yerel uygulama içindir.
 const fs = require('fs'), path = require('path');
 const root = path.resolve(__dirname, '..'), out = path.join(root, 'www');
-const items = ['index.html', 'privacy-policy.html', 'manifest.json', 'fonts', 'vendor',
+const items = ['index.html', 'privacy-policy.html', '404.html', 'manifest.json', 'fonts', 'vendor',
   'icon-192.png', 'icon-512.png', 'icon-maskable-192.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });

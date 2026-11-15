@@ -60,7 +60,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.evaluate(() => closeCustomConfirm(true));
   check('withdrawing health consent deletes health declaration', await page.evaluate(() => consentRecords[currentMemberName].health === false && !healthDeclarations[currentMemberName]));
   await flush(); await page.waitForTimeout(300);
-  await page.evaluate(() => { getMemberMeals(currentMemberName)['Öğle'].push({name:'Salata', cal:200, portion:1, photo:'https://example.invalid/p.jpg', date: toLocalDateStr(getNow())}); });
+  await page.evaluate(() => { getMemberMeals(currentMemberName)['Öğle'].push({name:'Salata', cal:200, portion:1, photo:'https://firebasestorage.googleapis.com/v0/b/test/o/p.jpg', date: toLocalDateStr(getNow())}); });
   await flush(); await page.waitForTimeout(200);
   // 6. logout -> admin
   await page.evaluate(() => logOut());
@@ -116,7 +116,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   await page.evaluate(() => { skipOnboarding(); });
   await page.waitForTimeout(1200);
   // Hesap silme: üye kendi hesabını siler
-  const storeNow = () => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+  const storeNow = () => page.evaluate(() => window.__fakeDump());
   await page.evaluate(() => openSettings());
   await page.click('#deleteAccountBtn');
   await page.fill('#deleteAccountPassword', 'yanlis');
@@ -131,7 +131,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   const leftovers = Object.entries(st).filter(([k, v]) => JSON.stringify(v).includes('Mert Aydın') && !k.startsWith('trainers/')).map(([k]) => k);
   check('deleted member: no data left in cloud', leftovers.length === 0, leftovers.join(','));
   check('deleted member: member doc removed', !Object.keys(st).some(k => k.startsWith('members/') && st[k].name === 'Mert Aydın'));
-  check('deleted member: photo file deleted from storage', await page.evaluate(() => (window.__deletedFiles || []).includes('https://example.invalid/p.jpg')));
+  check('deleted member: photo file deleted from storage', await page.evaluate(() => (window.__deletedFiles || []).includes('https://firebasestorage.googleapis.com/v0/b/test/o/p.jpg')));
   await login(page, '0542 249 32 27', '1234');
   check('deleted member cannot log in', (await page.textContent('#loginError')).includes('hatalı') && await page.isVisible('#logged-out-screen'));
   await page.reload(); await page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
@@ -147,7 +147,7 @@ const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+na
   check('admin can delete a member', !Object.entries(st).some(([k, v]) => JSON.stringify(v).includes('Deneme Üye')));
   check('other members untouched', Object.keys(st).filter(k => k.startsWith('members/')).length === 4);
   // 10. stored doc size sanity
-  const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(JSON.parse(localStorage.getItem('__fakeStore'))).map(([k,v])=>[k, JSON.stringify(v).length])));
+  const sizes = await page.evaluate(() => Object.fromEntries(Object.entries(window.__fakeDump()).map(([k,v])=>[k, JSON.stringify(v).length])));
   check('all docs under 1MB', Math.max(...Object.values(sizes)) < 1048576, 'largest doc '+Math.max(...Object.values(sizes))+' bytes, docs '+Object.keys(sizes).length);
   const errs = errors.filter(e=>!/ERR_FAILED|Postür modeli|status of 404/.test(e));
   check('no JS errors', errs.length===0, errs.join(' | '));

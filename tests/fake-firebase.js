@@ -2,8 +2,24 @@
 // tarayıcı bağlamındaki sayfalar arasında paylaşılır — böylece "iki cihaz aynı anda açık"
 // senaryosu da (canlı eşitleme, onSnapshot) test edilebilir. Gerçek veritabanına dokunmaz.
 (function(){
-  const KEY = '__fakeStore';
-  const load = () => JSON.parse(localStorage.getItem(KEY) || '{}');
+  // Her belge localStorage'da AYRI bir anahtarda tutulur ('__fs:' + yol). Tek büyük kayıt kullanılsaydı,
+  // iki sayfa ("iki cihaz") aynı anda farklı belgelere yazdığında biri diğerinin yazdığını ezebilirdi.
+  const PREFIX = '__fs:';
+  const SEED_KEY = '__fakeStore'; // testlerin başlangıç verisi (tek seferde belgelere dağıtılır)
+  (function importSeed(){
+    const seed = localStorage.getItem(SEED_KEY);
+    if(!seed) return;
+    const docs = JSON.parse(seed);
+    Object.keys(docs).forEach(p => { if(localStorage.getItem(PREFIX + p) === null) localStorage.setItem(PREFIX + p, JSON.stringify(docs[p])); });
+    localStorage.removeItem(SEED_KEY);
+  })();
+  const readDoc = (path) => { const raw = localStorage.getItem(PREFIX + path); return raw === null ? undefined : JSON.parse(raw); };
+  const load = () => {
+    const out = {};
+    for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith(PREFIX)) out[k.slice(PREFIX.length)] = JSON.parse(localStorage.getItem(k)); }
+    return out;
+  };
+  window.__fakeDump = load; // testler veritabanının tamamını buradan okur
   const chan = new BroadcastChannel('__fakeFirestore');
   window.__writes = [];
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
@@ -61,10 +77,12 @@
   }
   function commit(mutate, paths){
     paths.forEach(guard);
-    const store = load();
+    // Yalnızca ilgili belgeler taze okunur, değiştirilir ve geri yazılır
+    const store = {};
+    paths.forEach(p => { const d = readDoc(p); if(d !== undefined) store[p] = d; });
     mutate(store);
     paths.forEach(p => { const size = JSON.stringify(store[p] || {}).length; if(size > 1048576) throw new Error('Document exceeds 1MB: ' + p + ' (' + size + ')'); });
-    localStorage.setItem(KEY, JSON.stringify(store));
+    paths.forEach(p => { if(p in store) localStorage.setItem(PREFIX + p, JSON.stringify(store[p])); else localStorage.removeItem(PREFIX + p); });
     paths.forEach(p => window.__writes.push(p));
     notify();
     chan.postMessage('changed');
@@ -99,7 +117,7 @@
 
   function docRef(path){
     return { id: path.split('/').pop(), path,
-      get: async () => { guard(path); return makeDocSnap(path, load()[path]); },
+      get: async () => { guard(path); return makeDocSnap(path, readDoc(path)); },
       set: async (data, opts) => commit(s => applySet(s, path, data, opts), [path]),
       update: async (...args) => commit(s => applyUpdate(s, path, args), [path]),
       delete: async () => commit(s => { delete s[path]; }, [path]),
@@ -123,7 +141,7 @@
     async runTransaction(fn){
       const ops = [], paths = [];
       const tx = {
-        get: async r => { guard(r.path); return makeDocSnap(r.path, load()[r.path]); },
+        get: async r => { guard(r.path); return makeDocSnap(r.path, readDoc(r.path)); },
         set: (r, d, o) => { ops.push(s => applySet(s, r.path, d, o)); paths.push(r.path); },
         update: (r, ...a) => { ops.push(s => applyUpdate(s, r.path, a)); paths.push(r.path); },
       };
@@ -138,6 +156,6 @@
     initializeApp(){ return {}; },
     firestore,
     auth: () => ({ signInAnonymously: async () => ({ user: { uid: 'anon' } }), currentUser: { uid: 'anon' } }),
-    storage: () => ({ refFromURL: u => ({ delete: async () => { (window.__deletedFiles ||= []).push(u); } }), ref: () => ({ child: p => ({ putString: async () => {}, getDownloadURL: async () => 'https://example.invalid/' + p }) }) }),
+    storage: () => ({ refFromURL: u => ({ delete: async () => { (window.__deletedFiles ||= []).push(u); } }), ref: () => ({ child: p => ({ putString: async () => {}, getDownloadURL: async () => 'https://firebasestorage.googleapis.com/v0/b/test/o/' + p }) }) }),
   };
 })();

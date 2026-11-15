@@ -4,7 +4,7 @@ const { newContext, openPage, login } = require('./lib');
 const N = 50;
 const results = [];
 const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+name+(extra?' — '+extra:'')); };
-const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+const store = page => page.evaluate(() => window.__fakeDump());
 const wait = (page, ms) => page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms).catch(()=>{});
 const ready = page => page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
 const clean = errs => errs.filter(e=>!/ERR_FAILED|Postür modeli|status of 404/.test(e));

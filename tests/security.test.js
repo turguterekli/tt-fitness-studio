@@ -4,7 +4,7 @@
 const { newContext, openPage, login } = require('./lib');
 const results = [];
 const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+name+(extra?' — '+extra:'')); };
-const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+const store = page => page.evaluate(() => window.__fakeDump());
 const wait = (page, ms) => page.waitForTimeout(ms);
 const ready = page => page.waitForFunction(() => document.getElementById('cloudLoadingOverlay').style.display==='none');
 const clearDevice = page => page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('ttf_')).forEach(k => localStorage.removeItem(k)));

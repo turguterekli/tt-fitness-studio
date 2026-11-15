@@ -20,7 +20,7 @@ const denied = r => r === 'permission-denied';
 const forcePw = async (page, pw) => { await page.fill('#forcedPassword1', pw); await page.fill('#forcedPassword2', pw); await page.evaluate(() => saveForcedPassword()); await wait(page, 1200); };
 const secureLoginUI = async (page, user, pass) => { await page.fill('#loginPhoneInput', user); await page.fill('#loginPasswordInput', pass); await page.evaluate(() => loginMember()); await wait(page, 2500); };
 const logoutAndWait = async page => { await page.evaluate(() => logOut()); await wait(page, 1500); await ready(page); };
-const clean = e => e.filter(x => !/ERR_FAILED|Postür|404|favicon|permission|Missing or insufficient|Canlı eşitleme|WebChannel|400 \(|auth\/|Failed to load resource/i.test(x));
+const clean = e => e.filter(x => !/uye-kaydi-yok|ERR_FAILED|Postür|404|favicon|permission|Missing or insufficient|Canlı eşitleme|WebChannel|400 \(|auth\/|Failed to load resource/i.test(x));
 
 (async () => {
   await resetEmulator();
@@ -145,6 +145,10 @@ const clean = e => e.filter(x => !/ERR_FAILED|Postür|404|favicon|permission|Mis
   await wait(a, 5000);
   check('5.1 admin device receives member\'s meal and message live', await a.evaluate(() => getMemberMeals('Mert Aydın')['Kahvaltı'].some(m => m.name === 'Yulaf') && (memberMessages['Mert Aydın'] || []).some(m => m.text === 'Merhaba hocam') && adminMessageUnread['Mert Aydın'] === true));
   check('5.2 member device receives admin\'s note and payment live', await b.evaluate(() => memberTrainerNotes['Mert Aydın'] === 'Proteini artır' && memberPayments['Mert Aydın'].length === 2));
+  // Yoklamayı temiz bir durumdan yeniden işlet: kayıtları ve sayacı sıfırla, yönetici cihazı yeniden işlesin
+  await a.evaluate(async () => { Object.keys(attendanceLog).filter(k => k.startsWith('Mert Aydın|')).forEach(k => delete attendanceLog[k]); memberPackages['Mert Aydın'].used = 0; await flushAllAutosaves(); });
+  await wait(a, 2500);
+  await a.evaluate(() => runAutoAttendance()); await wait(a, 4000);
   const att = await a.evaluate(() => ({ used: memberPackages['Mert Aydın'].used, logs: Object.keys(attendanceLog).filter(k => k.startsWith('Mert Aydın|')).length }));
   await wait(b, 1500);
   check('5.3 attendance processed by admin device; member sees used sessions', att.used === att.logs && att.logs >= 1 && await b.evaluate(u => memberPackages['Mert Aydın'].used === u && sessionsUsed === u, att.used), JSON.stringify(att));

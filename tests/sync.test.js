@@ -2,7 +2,7 @@
 const { newContext, openPage, login } = require('./lib');
 const results = [];
 const check = (name, cond, extra='') => { results.push((cond?'PASS ':'FAIL ')+name+(extra?' — '+extra:'')); };
-const store = page => page.evaluate(() => JSON.parse(localStorage.getItem('__fakeStore')));
+const store = page => page.evaluate(() => window.__fakeDump());
 const wait = (page, ms) => page.evaluate(ms => new Promise(r => setTimeout(r, ms)), ms).catch(()=>{});
 
 const AYSE = 'Ayşe Yılmaz';

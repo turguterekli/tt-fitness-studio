@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /tests/
+Disallow: /store/
+Disallow: /android/
+Disallow: /ios/
+Disallow: /vendor/
+
+Sitemap: https://turguterekli.github.io/tt-fitness-studio/sitemap.xml
