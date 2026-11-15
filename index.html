@@ -2667,7 +2667,15 @@
     const admin = secureSession.role === 'admin';
     const myId = secureSession.memberId;
     const changedThenRefresh = (changed) => { if(changed){ applyAppMeta(); ensureMemberSyncs(); syncMemberViewOfAnnouncements(); scheduleRemoteRefresh(); } };
-    const onTrainers = (snap) => { let c = false; snap.docChanges().forEach(ch => { if(trainersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; }); changedThenRefresh(c); };
+    const onTrainers = (snap) => {
+      let c = false;
+      snap.docChanges().forEach(ch => {
+        // Yeni gelen kayıt, yerelde aynı adla duran (henüz kimliği olmayan) antrenörle eşleştirilir; kopya oluşmaz
+        if(ch.type !== 'removed' && !trainers.some(t => t._id === ch.doc.id) && trainers.some(t => !t._id && t.name === (ch.doc.data() || {}).name)){ ingestTrainerDoc(ch.doc); c = true; return; }
+        if(trainersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true;
+      });
+      changedThenRefresh(c);
+    };
     db.collection('trainers').onSnapshot(onTrainers, secureErr('antrenörler'));
     if(admin){
       db.collection('members').onSnapshot(snap => {
@@ -3635,15 +3643,17 @@
   }
 
   function renderTrainers(){
-    document.getElementById('trainerList').innerHTML = trainers.map((t,i)=>`
+    // Buluttan gelen bir antrenör kaydında bazı alanlar (etiket, biyografi, renk) eksik olabilir:
+    // ekran bu yüzden hata vermesin diye her alan için güvenli bir varsayılan kullanılır.
+    document.getElementById('trainerList').innerHTML = trainers.filter(t => t && t.name).map((t,i)=>`
       <div class="trainer-card" id="trainer-${i}" onclick="toggleTrainer(${i})">
-        <div class="t-avatar" style="background:${t.color}22; color:${t.color};">${initials(t.name)}</div>
+        <div class="t-avatar" style="background:${t.color || '#CE997A'}22; color:${t.color || '#CE997A'};">${initials(t.name)}</div>
         <div class="t-body">
           <div class="t-name">${t.name}</div>
-          <div class="t-role">${t.role}</div>
+          <div class="t-role">${t.role || ''}</div>
           ${t.cert ? `<div style="font-size:11px; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:5px;">🏅 ${t.cert}</div>` : ''}
-          <div class="t-tags">${t.tags.map(tag=>`<span class="t-tag">${tag}</span>`).join('')}</div>
-          <p class="t-bio">${t.bio}</p>
+          <div class="t-tags">${(Array.isArray(t.tags) ? t.tags : []).map(tag=>`<span class="t-tag">${tag}</span>`).join('')}</div>
+          <p class="t-bio">${t.bio || ''}</p>
           <div class="t-actions" style="flex-direction:column; gap:8px;">
             <button class="btn btn-brass btn-full" onclick="event.stopPropagation(); requestSessionViaMessage('${t.name}')">💬 Mesaj Gönder</button>
             <button class="btn btn-ghost btn-full" onclick="event.stopPropagation(); toggleTrainer(${i})">Profili Gör</button>
