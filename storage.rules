@@ -1,0 +1,14 @@
+rules_version = '2';
+// TT Fitness Studio — fotoğraf dosyaları. Herkes yalnızca kendi klasörüne (u/<kullanıcı>/…) resim
+// yükleyebilir. Dosyalar uygulamada tahmin edilemeyen gizli bağlantılarla gösterilir; klasörler listelenemez.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /u/{uid}/{allPaths=**} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.size < 6 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

@@ -3,13 +3,16 @@ const fs = require('fs'), path = require('path');
 const REPO = path.resolve(__dirname, '..');
 const FAKE = fs.readFileSync(path.join(__dirname,'fake-firebase.js'),'utf8');
 async function newContext(opts={}){
-  const browser = await chromium.launch();
+  // Emülatör modunda sayfa (localhost) yerel emülatör portlarına istek atabilsin
+  const browser = await chromium.launch(opts.emulator ? { args: ['--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults'] } : {});
   const ctx = await browser.newContext({ viewport:{width:390,height:844}, ...(opts.ctx||{}) });
   await ctx.route('**/*', async route => {
     const u = new URL(route.request().url());
+    // Emülatör modu: yerel Firebase emülatörüne giden istekler serbest
+    if(opts.emulator && u.hostname==='127.0.0.1') return route.continue();
     if(u.hostname==='localhost'){
       // Gerçek Firebase SDK yerine sahte olanı ver (opts.realSdk ile kapatılabilir)
-      if(!opts.realSdk && /\/vendor\/firebase-.*-compat\.js$/.test(u.pathname)) return route.fulfill({ status:200, contentType:'application/javascript', body: u.pathname.includes('firebase-app-compat') ? FAKE : '' });
+      if(!opts.realSdk && !opts.emulator && /\/vendor\/firebase-.*-compat\.js$/.test(u.pathname)) return route.fulfill({ status:200, contentType:'application/javascript', body: u.pathname.includes('firebase-app-compat') ? FAKE : '' });
       const f = path.join(REPO, decodeURIComponent(u.pathname));
       if(fs.existsSync(f) && fs.statSync(f).isFile()){
         const ext = path.extname(f); const ct = {'.html':'text/html','.js':'application/javascript','.json':'application/json','.png':'image/png','.css':'text/css','.woff2':'font/woff2'}[ext]||'application/octet-stream';
@@ -24,6 +27,7 @@ async function newContext(opts={}){
     return route.abort();
   });
   // seed: sahte veritabanının başlangıç içeriği ({ 'koleksiyon/belge': {...} })
+  if(opts.emulator) await ctx.addInitScript(() => { window.__TTF_EMULATOR = true; });
   if(opts.rules) await ctx.addInitScript(r => localStorage.setItem('__fakeRules', r), opts.rules);
   if(opts.seed) await ctx.addInitScript(s => { if(!localStorage.getItem('__fakeStore')) localStorage.setItem('__fakeStore', s); }, JSON.stringify(opts.seed));
   return { browser, ctx };
@@ -59,4 +63,15 @@ async function login(page, user, pass, newPass = NEW_PASSWORD){
     await page.waitForTimeout(200);
   }
 }
-module.exports = { open, login, newContext, openPage, NEW_PASSWORD };
+// Emülatördeki tüm veriyi ve hesapları siler (her testin başında)
+async function resetEmulator(){
+  await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-ttfitness/databases/(default)/documents', { method: 'DELETE' });
+  await fetch('http://127.0.0.1:9099/emulator/v1/projects/demo-ttfitness/accounts', { method: 'DELETE' });
+}
+// Emülatördeki Firestore kurallarını değiştirir (ör. geçiş öncesi "eski açık kurallar" → gerçek kurallar)
+async function setEmulatorRules(content){
+  const res = await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-ttfitness:securityRules', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rules: { files: [{ name: 'firestore.rules', content }] } }) });
+  if(!res.ok) throw new Error('Kurallar yüklenemedi: ' + (await res.text()).slice(0, 300));
+}
+module.exports = { open, login, newContext, openPage, NEW_PASSWORD, resetEmulator, setEmulatorRules };

@@ -1763,6 +1763,17 @@
           <div id="adminPasswordChangeMsg" style="font-size:11.5px; margin-top:8px; text-align:center;"></div>
         </div>
 
+        <div class="card" id="secureModeCard" style="margin-bottom:14px;">
+          <div class="card-label">VERİ GÜVENLİĞİ</div>
+          <div id="secureModeStatus" style="font-size:12px; color:var(--chalk); line-height:1.6; margin-bottom:10px;"></div>
+          <div id="secureModeForm" style="display:none;">
+            <div class="auth-field" style="margin-bottom:10px;"><span class="auth-icon">🔒</span><input type="password" id="secureModePassword" class="auth-input" placeholder="Yönetici şifren" autocomplete="current-password"></div>
+            <button class="btn btn-brass btn-full" id="secureModeBtn" onclick="startSecureMigration()">Güvenli moda geç</button>
+          </div>
+          <div id="secureModeMsg" style="font-size:11.5px; margin-top:8px; color:var(--muted);"></div>
+          <div id="secureModeCodes" style="display:none; margin-top:10px;"></div>
+        </div>
+
         <div class="card" id="loginLogCard" style="margin-bottom:14px;">
           <div class="card-label">GİRİŞ KAYITLARI <span style="color:var(--muted); font-weight:400;">(son 30)</span></div>
           <div id="loginLogList" style="font-size:11.5px; max-height:220px; overflow-y:auto;"></div>
@@ -1867,9 +1878,17 @@
     appId: "1:246112140718:web:dcac0d734605bb77ed5c3f"
   };
   console.log('%cTT FITNESS BUILD: 2026-11-11-v10', 'background:#CE997A;color:#000;font-weight:bold;padding:2px 6px;');
+  // Testlerde gerçek Firebase yerine yerel emülatöre bağlanılır (canlı veriye dokunulmaz)
+  const USE_EMULATOR = !!window.__TTF_EMULATOR;
+  if(USE_EMULATOR) firebaseConfig.projectId = 'demo-ttfitness';
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const storage = firebase.storage();
+  if(USE_EMULATOR){
+    db.useEmulator('127.0.0.1', 8080);
+    firebase.auth().useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
+    storage.useEmulator('127.0.0.1', 9199);
+  }
   let cloudReady = false;
 
   // Bir fotoğrafı (base64 data URL olarak elde edilmiş) Firebase Storage'a yükleyip,
@@ -1878,7 +1897,9 @@
   async function uploadPhotoToStorage(dataUrl, folder){
     if(!dataUrl || !dataUrl.startsWith('data:')) return dataUrl; // zaten bir URL ise (önceden yüklenmiş) olduğu gibi bırak
     try{
-      const path = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+      // Güvenli modda herkes yalnızca kendi klasörüne yükleyebilir (storage.rules)
+      const base = (secureMode && secureSession) ? `u/${secureSession.uid}/${folder}` : folder;
+      const path = `${base}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
       const ref = storage.ref().child(path);
       await ref.putString(dataUrl, 'data_url');
       return await ref.getDownloadURL();
@@ -2028,16 +2049,20 @@
   // Tek bir bulut belgesiyle eşitlenen bir veri yapısı.
   //  kind 'object' → belgenin her alanı objenin bir anahtarı (genelde üye adı)
   //  kind 'array'  → belge { items: [...] } şeklinde
-  function createDocSync(docRef, ref, kind, label, customApply){
+  // access verilirse veri sabit bir objeden değil, { leaves(), apply(), readOnly } arayüzünden okunup yazılır
+  // (üye belgeleri gibi, birden çok veri yapısına dağılmış kayıtlar için).
+  function createDocSync(docRef, ref, kind, label, customApply, access){
     const synced = new Map(); // anahtar -> bulutta olduğunu bildiğimiz son değer (kanonik metin)
     let docExists = false;
     function localLeaves(){
       const out = new Map();
+      if(access){ access.leaves().forEach((value, key) => { if(key) out.set(key, { value, json: canonForCloud(value) }); }); return out; }
       if(kind === 'array'){ out.set('items', { value: ref, json: canonForCloud(ref) }); }
       else { Object.keys(ref).forEach(k => { if(k && ref[k] !== undefined) out.set(k, { value: ref[k], json: canonForCloud(ref[k]) }); }); }
       return out;
     }
     function applyRemote(key, raw){
+      if(access){ access.apply(key, raw); return; }
       if(customApply){ customApply(key, raw); return; }
       if(kind === 'array'){
         const arr = desanitizeFromFirestore(raw) || [];
@@ -2050,7 +2075,7 @@
     function ingest(data, isInitial){
       docExists = true;
       data = data || {};
-      if(isInitial && kind === 'object' && !customApply){ Object.keys(ref).forEach(k => delete ref[k]); }
+      if(isInitial && kind === 'object' && !customApply && !access){ Object.keys(ref).forEach(k => delete ref[k]); }
       const local = localLeaves();
       let changed = false;
       const remoteKeys = kind === 'array' ? ('items' in data ? ['items'] : []) : Object.keys(data);
@@ -2061,7 +2086,7 @@
         if(rJson === synced.get(key)) return;
         const l = local.get(key);
         const lJson = l ? l.json : undefined;
-        if(isInitial || lJson === synced.get(key)){
+        if(isInitial || (access && access.readOnly) || lJson === synced.get(key)){
           if(lJson !== rJson){ applyRemote(key, has ? data[key] : undefined); changed = true; }
         }
         if(rJson === undefined) synced.delete(key); else synced.set(key, rJson);
@@ -2073,8 +2098,9 @@
       if(kind === 'array'){ ref.length = 0; ref.push(...(value || [])); }
       else { Object.keys(ref).forEach(k => delete ref[k]); Object.assign(ref, value || {}); }
     }
+    let disposed = false;
     async function tick(){
-      if(!cloudReady) return;
+      if(!cloudReady || disposed || (access && access.readOnly)) return;
       const local = localLeaves();
       const args = []; const sent = []; const createPayload = {};
       local.forEach((l, key) => {
@@ -2109,14 +2135,18 @@
         setTimeout(() => { sent.forEach(([key, prev]) => { if(prev === undefined) synced.delete(key); else synced.set(key, prev); }); }, 8000);
       }
     }
-    setInterval(tick, 1000);
+    const timer = setInterval(tick, 1000);
     registerAutosaveFlusher(tick);
-    return { ingest, importLegacy, tick };
+    function dispose(){
+      disposed = true; clearInterval(timer);
+      const i = autosaveFlushers.indexOf(tick); if(i !== -1) autosaveFlushers.splice(i, 1);
+    }
+    return { ingest, importLegacy, tick, dispose };
   }
 
   // Her kaydı ayrı bir belge olan koleksiyonlar (üyeler, antrenörler) için eşitleme:
   // sadece değişen kaydın değişen alanları yazılır.
-  function createCollectionSync(arr, collectionName, withDefaults){
+  function createCollectionSync(arr, collectionName, withDefaults, readOnly){
     const synced = new Map(); // belge id -> { alan: kanonik metin }
     function fieldsOf(obj){
       const out = {};
@@ -2156,6 +2186,7 @@
       return changed;
     }
     async function tick(){
+      if(readOnly) return;
       if(!cloudReady) return;
       const batch = db.batch();
       let count = 0;
@@ -2226,6 +2257,543 @@
     return out;
   }
 
+  // ==================== GÜVENLİ MOD ====================
+  // Eski düzende uygulama veritabanına "anonim" bağlanıp herkesin verisini indiriyor, giriş kontrolünü
+  // telefonda yapıyordu. Güvenli modda:
+  //  • Giriş Firebase Authentication ile yapılır (şifreyi Firebase doğrular ve saklar).
+  //  • Her üyenin verisi kendi belgelerinde durur:
+  //      member_self/{id}    üyenin kendi yazdıkları (öğün, mesaj, profil, onaylar, sağlık beyanı…)
+  //      member_admin/{id}   salonun üye hakkında tuttukları (program, paket, ödeme, ölçüm, yoklama…) — üye sadece okur
+  //      member_private/{id} yalnızca yönetimin gördüğü notlar
+  //  • Kimin neyi okuyup yazabileceğini veritabanı kuralları (firestore.rules) SUNUCUDA zorlar;
+  //    bir üyenin cihazına başka üyelerin verisi hiç inmez.
+  // Geçiş, tam yetkili yöneticinin Ayarlar'daki "Güvenli moda geç" adımıyla başlar; o zamana kadar eski düzen çalışır.
+  let secureMode = false;
+  let secureSession = null; // { uid, memberId, role }
+  const SECURE_EMAIL_DOMAIN = 'uye.ttfitness.app';
+  const isSecureAdmin = () => secureMode && secureSession && secureSession.role === 'admin';
+  const isSecureMember = () => secureMode && secureSession && secureSession.role !== 'admin';
+
+  // Telefon/kullanıcı adından giriş anahtarı: "0542 249 32 27", "+90 542 249 32 27", "5422493227" → "05422493227"
+  function phoneKeyOf(phone){
+    let k = String(phone || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if(/^\d+$/.test(k)){
+      if(k.length === 12 && k.startsWith('90')) k = '0' + k.slice(2);
+      else if(k.length === 10 && k.startsWith('5')) k = '0' + k;
+    }
+    return k;
+  }
+  // Şifre sıfırlanınca hesap "yeni nesil" bir adresle yeniden açılır (g1, g2…); eski hesap yetkisini kaybeder
+  const loginEmailFor = (phoneKey, gen) => phoneKey + (gen ? '.g' + gen : '') + '@' + SECURE_EMAIL_DOMAIN;
+  function randomTempCode(){
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => alphabet[b % alphabet.length]).join('');
+  }
+  const newActivationCode = () => secureMode ? randomTempCode() : String(Math.floor(100000 + Math.random() * 900000));
+
+  // Üye adına göre tutulan verilerin hangi belgeye ait olduğu
+  function memberFieldDefs(){
+    return {
+      self: [
+        ['memberMessages', memberMessages, 'byName'], ['adminMessageUnread', adminMessageUnread, 'byName'],
+        ['classConfirmations', classConfirmations, 'composite'],
+        ['contractAccepted', contractAccepted, 'byName'], ['contractAcceptedVersion', contractAcceptedVersion, 'byName'],
+        ['contractAcceptedDate', contractAcceptedDate, 'byName'], ['emergencyContacts', emergencyContacts, 'byName'],
+        ['healthDeclarations', healthDeclarations, 'byName'], ['parentalConsents', parentalConsents, 'byName'],
+        ['photoConsent', photoConsent, 'byName'], ['consentRecords', consentRecords, 'byName'],
+        ['goalNotes', goalNotes, 'byName'], ['memberProfiles', memberProfiles, 'byName'],
+        ['memberMeals', memberMeals, 'byName'], ['progressEntries', progressEntries, 'byName'],
+        ['mealResetMonth', mealResetMonth, 'byName'],
+        ['pendingCreditRequests', pendingCreditRequests, 'arrayByMember'], ['sessionRequests', sessionRequests, 'arrayByMember'],
+      ],
+      admin: [
+        ['memberPrograms', memberPrograms, 'byName'], ['memberPackages', memberPackages, 'byName'],
+        ['memberPayments', memberPayments, 'byName'], ['attendanceLog', attendanceLog, 'composite'],
+        ['memberMealTargets', memberMealTargets, 'byName'], ['mealReminders', mealReminders, 'byName'],
+        ['mealPhotoComments', mealPhotoComments, 'composite'], ['memberWorkoutSequences', memberWorkoutSequences, 'byName'],
+        ['memberWeeklyLimits', memberWeeklyLimits, 'byName'], ['extraClassDays', extraClassDays, 'byName'],
+        ['referrals', referrals, 'byName'], ['memberDiscounts', memberDiscounts, 'byName'],
+        ['seasonBaselinePoints', seasonBaselinePoints, 'byName'], ['memberMeasurements', memberMeasurements, 'byName'],
+        ['posturePhotos', posturePhotos, 'byName'], ['memberTrainerNotes', memberTrainerNotes, 'byName'],
+        ['memberAnnouncements', memberAnnouncements, 'byName'],
+      ],
+      priv: [ ['memberNotes', memberNotes, 'byName'] ],
+    };
+  }
+  function readMemberField(ref, type, name){
+    if(type === 'composite'){
+      const out = {}; let any = false;
+      Object.keys(ref).forEach(k => { if(k.startsWith(name + '|')){ out[k.slice(name.length + 1)] = ref[k]; any = true; } });
+      return any ? out : undefined;
+    }
+    if(type === 'arrayByMember'){
+      const list = ref.filter(x => x && x.member === name);
+      return list.length ? list : undefined;
+    }
+    return ref[name];
+  }
+  function writeMemberField(ref, type, name, value){
+    if(type === 'composite'){
+      Object.keys(ref).forEach(k => { if(k.startsWith(name + '|')) delete ref[k]; });
+      if(value) Object.keys(value).forEach(k => { ref[name + '|' + k] = value[k]; });
+    } else if(type === 'arrayByMember'){
+      for(let i = ref.length - 1; i >= 0; i--){ if(ref[i] && ref[i].member === name) ref.splice(i, 1); }
+      if(Array.isArray(value)) ref.push(...value);
+    } else if(value === undefined){ delete ref[name]; }
+    else { ref[name] = value; }
+  }
+  function memberDocAccess(getName, defs, readOnly){
+    return {
+      readOnly,
+      leaves(){
+        const name = getName(); const out = new Map();
+        defs.forEach(([field, ref, type]) => { const v = readMemberField(ref, type, name); if(v !== undefined) out.set(field, v); });
+        return out;
+      },
+      apply(field, raw){
+        const d = defs.find(x => x[0] === field);
+        if(d) writeMemberField(d[1], d[2], getName(), raw === undefined ? undefined : desanitizeFromFirestore(raw));
+      },
+    };
+  }
+
+  // Yönetici: tüm üyeler için; üye: yalnızca kendisi için belge eşitleyicileri
+  const memberSyncs = {};        // memberId -> { holder, self, admin, priv }
+  const pendingMemberDocs = { member_self: {}, member_admin: {}, member_private: {} }; // eşitleyicisi henüz kurulmamış üyelerin gelen belgeleri
+  const memberDocKinds = { member_self: 'self', member_admin: 'admin', member_private: 'priv' };
+  function ensureMemberSyncs(){
+    if(!secureMode || !secureSession) return;
+    const admin = secureSession.role === 'admin';
+    const wanted = members.filter(m => m._id && (admin || m._id === secureSession.memberId));
+    let defs = null;
+    wanted.forEach(m => {
+      if(memberSyncs[m._id]){ memberSyncs[m._id].holder.name = m.name; return; }
+      defs = defs || memberFieldDefs();
+      const holder = { name: m.name };
+      const getName = () => holder.name;
+      const entry = { holder,
+        self: createDocSync(db.collection('member_self').doc(m._id), null, 'object', 'üye verisi', null, memberDocAccess(getName, defs.self, false)),
+        admin: createDocSync(db.collection('member_admin').doc(m._id), null, 'object', 'üye kaydı', null, memberDocAccess(getName, defs.admin, !admin)),
+        priv: admin ? createDocSync(db.collection('member_private').doc(m._id), null, 'object', 'yönetim notu', null, memberDocAccess(getName, defs.priv, false)) : null,
+      };
+      memberSyncs[m._id] = entry;
+      Object.keys(memberDocKinds).forEach(coll => {
+        const waiting = pendingMemberDocs[coll][m._id];
+        const sync = entry[memberDocKinds[coll]];
+        if(waiting !== undefined && sync){ sync.ingest(waiting, true); delete pendingMemberDocs[coll][m._id]; }
+      });
+    });
+    Object.keys(memberSyncs).forEach(id => { if(!wanted.some(m => m._id === id)) disposeMemberSyncs(id); });
+  }
+  function disposeMemberSyncs(id){
+    const e = memberSyncs[id];
+    if(!e) return;
+    [e.self, e.admin, e.priv].forEach(s => { if(s) s.dispose(); });
+    delete memberSyncs[id];
+  }
+  function ingestMemberDoc(coll, id, data, removed){
+    const e = memberSyncs[id];
+    const sync = e && e[memberDocKinds[coll]];
+    if(removed){ delete pendingMemberDocs[coll][id]; return sync ? sync.ingest({}, false) : false; }
+    if(!sync){ pendingMemberDocs[coll][id] = data || {}; return false; }
+    return sync.ingest(data || {}, false);
+  }
+
+  // Duyurular: tam liste yalnızca yönetimde durur. Her üyenin kendi belgesine yalnızca ONA yönelik
+  // duyurular (hedef bilgisi çıkarılmış olarak) kopyalanır — başkasına özel duyuru üyeye hiç gitmez.
+  let memberAnnouncements = {}; // { memberName: [{ id, target:'all', message, date }] }
+  function recomputeMemberAnnouncements(){
+    if(!isSecureAdmin()) return;
+    members.filter(m => m.role !== 'admin').forEach(m => {
+      const mine = announcements.filter(a => isAnnouncementForMe(a, m.name)).map(a => ({ id: a.id, target: 'all', message: a.message, date: a.date }));
+      if(stableStringify(mine) !== stableStringify(memberAnnouncements[m.name] || [])){
+        if(mine.length) memberAnnouncements[m.name] = mine; else delete memberAnnouncements[m.name];
+      }
+    });
+  }
+  // Sıralama: üyeler birbirinin verisini göremediği için, yönetici cihazı maskelenmiş adlar ve
+  // puanlardan oluşan bir özet yayınlar; üye ekranı sıralamayı bu özetten çizer.
+  let leaderboardShared = {}; // { rows: [{ id, n: 'Ali K.', p: puan }] }
+  function updateLeaderboardSnapshot(){
+    if(!isSecureAdmin()) return;
+    const rows = members.filter(m => m.role !== 'admin' && m._id).map(m => ({ id: m._id, n: maskName(m.name), p: getSeasonPoints(m.name) }));
+    if(stableStringify(rows) !== stableStringify(leaderboardShared.rows || [])) leaderboardShared.rows = rows;
+  }
+  function getLeaderboardRows(){
+    if(isSecureMember()){
+      return (leaderboardShared.rows || []).map(r => r.id === secureSession.memberId
+        ? { name: currentMemberName, points: getSeasonPoints(currentMemberName) }
+        : { name: r.n, points: r.p, masked: true });
+    }
+    return members.filter(m => m.role !== 'admin').map(m => ({ name: m.name, points: getSeasonPoints(m.name) }));
+  }
+  function syncMemberViewOfAnnouncements(){
+    if(!isSecureMember()) return;
+    announcements.length = 0;
+    announcements.push(...(memberAnnouncements[currentMemberName] || []));
+  }
+
+  // ---- Giriş hesapları ----
+  let provisioningApp = null;
+  function provisioningAuth(){
+    // Yönetici oturumunu bozmadan başka bir kullanıcı hesabı açabilmek için ikinci bir bağlantı
+    if(!provisioningApp){
+      provisioningApp = firebase.initializeApp(firebaseConfig, 'hesap-acma');
+      if(USE_EMULATOR) provisioningApp.auth().useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
+    }
+    return provisioningApp.auth();
+  }
+  // Üye için (yeniden) giriş hesabı açar: Authentication kullanıcısı + yetki belgesi + giriş dizini.
+  // Şifre sıfırlamada da kullanılır: yeni hesap açılır, eskisinin yetki belgesi silinir.
+  async function provisionMemberAccount(member, password){
+    if(!member._id) await membersSync.tick();
+    if(!member._id) throw new Error('Üye kaydı henüz oluşmadı');
+    const key = phoneKeyOf(member.phone);
+    if(!key) throw new Error('Telefon numarası / kullanıcı adı geçersiz');
+    if(members.some(o => o !== member && phoneKeyOf(o.phone) === key)) throw new Error('Bu telefon numarası başka bir üyede kayıtlı: ' + member.phone);
+    const idxRef = db.collection('login_index').doc(key);
+    const idxSnap = await idxRef.get();
+    let gen = idxSnap.exists ? ((idxSnap.data().gen || 0) + 1) : 0;
+    const auth2 = provisioningAuth();
+    let cred = null;
+    for(let attempt = 0; attempt < 6 && !cred; attempt++){
+      try{ cred = await auth2.createUserWithEmailAndPassword(loginEmailFor(key, gen), password); }
+      catch(e){ if(e.code === 'auth/email-already-in-use'){ gen++; } else { throw e; } }
+    }
+    if(!cred) throw new Error('Giriş hesabı açılamadı');
+    const uid = cred.user.uid;
+    await auth2.signOut();
+    const oldUid = member.uid;
+    await db.collection('users').doc(uid).set({ memberId: member._id, role: member.role === 'admin' ? 'admin' : 'member', phoneKey: key });
+    await idxRef.set({ gen });
+    if(oldUid && oldUid !== uid) await db.collection('users').doc(oldUid).delete().catch(() => null);
+    member.uid = uid;
+    delete member.pw; delete member.password;
+  }
+  // Yönetici yeni üye(ler) eklediğinde giriş hesaplarını açar
+  async function provisionNewMembers(list){
+    if(!secureMode) return;
+    for(const m of list){
+      try{
+        await provisionMemberAccount(m, m.activationCode);
+      }catch(err){
+        console.error('Giriş hesabı açılamadı:', err);
+        alert(`${m.name} için giriş hesabı açılamadı: ${err.message}\nÜye kartındaki "Şifreyi Değiştir" ile tekrar deneyebilirsin.`);
+      }
+    }
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+  }
+
+  function clearStateForSecureLoad(){
+    const defs = memberFieldDefs();
+    [...defs.self, ...defs.admin, ...defs.priv].forEach(([, ref, type]) => {
+      if(Array.isArray(ref)) ref.length = 0; else Object.keys(ref).forEach(k => delete ref[k]);
+    });
+    members.length = 0;
+    [announcements, financeEntries, passwordResetRequests].forEach(a => { a.length = 0; });
+    [loginLog, loginLocks].forEach(o => Object.keys(o).forEach(k => delete o[k]));
+  }
+  function ingestTrainerDoc(doc){
+    const existing = trainers.find(t => !t._id && t.name === (doc.data() || {}).name);
+    if(existing) existing._id = doc.id;
+    trainersSync.ingestDoc(doc.id, doc.data(), false);
+    if(existing) Object.assign(existing, desanitizeFromFirestore(doc.data()));
+  }
+  const secureErr = (what) => (err) => console.error('Canlı eşitleme (' + what + ') hatası:', err);
+
+  // Giriş yapan kişinin görmeye yetkili olduğu veriyi yükler ve canlı dinlemeye başlar
+  async function loadSecureData(){
+    clearStateForSecureLoad();
+    const admin = secureSession.role === 'admin';
+    const myId = secureSession.memberId;
+    const appData = db.collection('app_data');
+    membersSync = createCollectionSync(members, 'members', applyMemberDefaults);
+    trainersSync = createCollectionSync(trainers, 'trainers', null, !admin);
+    const sharedRefs = admin
+      ? [[announcements, 'announcements', 'array'], [financeEntries, 'financeEntries', 'array'], [priceSettings, 'priceSettings', 'object'], [appMeta, 'appMeta', 'object'], [leaderboardShared, 'leaderboardShared', 'object']]
+      : [[priceSettings, 'priceSettings', 'object'], [appMeta, 'appMeta', 'object'], [leaderboardShared, 'leaderboardShared', 'object']];
+    const readOnlyAccess = (ref) => ({ readOnly: true,
+      leaves(){ const out = new Map(); Object.keys(ref).forEach(k => { if(ref[k] !== undefined) out.set(k, ref[k]); }); return out; },
+      apply(key, raw){ if(raw === undefined) delete ref[key]; else ref[key] = desanitizeFromFirestore(raw); } });
+    sharedRefs.forEach(([ref, field, kind]) => {
+      appDataSyncs['state_' + field] = admin
+        ? createDocSync(appData.doc('state_' + field), ref, kind, field)
+        : createDocSync(appData.doc('state_' + field), null, 'object', field, null, readOnlyAccess(ref));
+    });
+
+    if(admin){
+      const [mSnap, tSnap, aSnap, sSnap, adSnap, pSnap, rSnap] = await Promise.all([
+        db.collection('members').get(), db.collection('trainers').get(), appData.get(),
+        db.collection('member_self').get(), db.collection('member_admin').get(), db.collection('member_private').get(),
+        db.collection('reset_requests').get(),
+      ]);
+      mSnap.forEach(doc => membersSync.ingestDoc(doc.id, doc.data(), false));
+      tSnap.forEach(ingestTrainerDoc);
+      aSnap.forEach(doc => { const s = appDataSyncs[doc.id]; if(s) s.ingest(doc.data(), true); });
+      ensureMemberSyncs();
+      sSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].self.ingest(doc.data(), true));
+      adSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].admin.ingest(doc.data(), true));
+      pSnap.forEach(doc => memberSyncs[doc.id] && memberSyncs[doc.id].priv.ingest(doc.data(), true));
+      applyResetRequests(rSnap);
+    } else {
+      const [mDoc, tSnap, selfDoc, adminDoc, ...sharedDocs] = await Promise.all([
+        db.collection('members').doc(myId).get(), db.collection('trainers').get(),
+        db.collection('member_self').doc(myId).get(), db.collection('member_admin').doc(myId).get(),
+        ...sharedRefs.map(([, field]) => appData.doc('state_' + field).get()),
+      ]);
+      if(!mDoc.exists) throw new Error('uye-kaydi-yok');
+      membersSync.ingestDoc(myId, mDoc.data(), false);
+      tSnap.forEach(ingestTrainerDoc);
+      sharedDocs.forEach((snap, i) => { if(snap.exists) appDataSyncs['state_' + sharedRefs[i][1]].ingest(snap.data(), true); });
+      ensureMemberSyncs();
+      if(selfDoc.exists) memberSyncs[myId].self.ingest(selfDoc.data(), true);
+      if(adminDoc.exists) memberSyncs[myId].admin.ingest(adminDoc.data(), true);
+    }
+    const allDefs = memberFieldDefs();
+    allStateRefs = [...allDefs.self, ...allDefs.admin, ...allDefs.priv].map(([field, ref]) => [ref, field, Array.isArray(ref) ? 'array' : 'object'])
+      .concat(sharedRefs);
+    applyAppMeta();
+    syncMemberViewOfAnnouncements();
+  }
+  function startSecureListeners(){
+    const admin = secureSession.role === 'admin';
+    const myId = secureSession.memberId;
+    const changedThenRefresh = (changed) => { if(changed){ applyAppMeta(); ensureMemberSyncs(); syncMemberViewOfAnnouncements(); scheduleRemoteRefresh(); } };
+    const onTrainers = (snap) => { let c = false; snap.docChanges().forEach(ch => { if(trainersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; }); changedThenRefresh(c); };
+    db.collection('trainers').onSnapshot(onTrainers, secureErr('antrenörler'));
+    if(admin){
+      db.collection('members').onSnapshot(snap => {
+        let c = false;
+        snap.docChanges().forEach(ch => { if(membersSync.ingestDoc(ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; });
+        changedThenRefresh(c);
+      }, secureErr('üyeler'));
+      db.collection('app_data').onSnapshot(snap => {
+        let c = false;
+        snap.docChanges().forEach(ch => { const s = appDataSyncs[ch.doc.id]; if(s && ch.type !== 'removed' && s.ingest(ch.doc.data(), false)) c = true; });
+        changedThenRefresh(c);
+      }, secureErr('ortak veri'));
+      Object.keys(memberDocKinds).forEach(coll => {
+        db.collection(coll).onSnapshot(snap => {
+          let c = false;
+          snap.docChanges().forEach(ch => { if(ingestMemberDoc(coll, ch.doc.id, ch.doc.data(), ch.type === 'removed')) c = true; });
+          changedThenRefresh(c);
+        }, secureErr(coll));
+      });
+      db.collection('reset_requests').onSnapshot(snap => { applyResetRequests(snap); scheduleRemoteRefresh(); }, secureErr('şifre istekleri'));
+    } else {
+      db.collection('members').doc(myId).onSnapshot(snap => {
+        changedThenRefresh(membersSync.ingestDoc(myId, snap.exists ? snap.data() : {}, !snap.exists));
+      }, secureErr('üye kaydı'));
+      ['member_self', 'member_admin'].forEach(coll => {
+        db.collection(coll).doc(myId).onSnapshot(snap => { changedThenRefresh(ingestMemberDoc(coll, myId, snap.exists ? snap.data() : {}, !snap.exists)); }, secureErr(coll));
+      });
+      ['priceSettings', 'appMeta', 'leaderboardShared'].forEach(field => {
+        db.collection('app_data').doc('state_' + field).onSnapshot(snap => { if(snap.exists) changedThenRefresh(appDataSyncs['state_' + field].ingest(snap.data(), false)); }, secureErr(field));
+      });
+    }
+    // Yetki belgem silindiyse (yönetici şifremi sıfırladı ya da hesabımı sildi) bu cihazdaki oturumu hemen kapat.
+    // Not: Firebase, açık bir bağlantının okuma yetkisini anında kesmez (en geç oturum anahtarı yenilenince,
+    // yaklaşık 1 saat içinde keser); yazma denemeleri ise hemen reddedilir.
+    let sawOwnUserDoc = false;
+    db.collection('users').doc(secureSession.uid).onSnapshot(snap => {
+      if(snap.exists){ sawOwnUserDoc = true; return; }
+      if(sawOwnUserDoc && !snap.metadata.fromCache) forceSecureSignOut();
+    }, () => forceSecureSignOut());
+    setInterval(() => { ensureMemberSyncs(); recomputeMemberAnnouncements(); updateLeaderboardSnapshot(); }, 2000);
+  }
+  let secureSignOutStarted = false;
+  function forceSecureSignOut(){
+    if(secureSignOutStarted) return;
+    secureSignOutStarted = true;
+    memberSessionActive = false;
+    firebase.auth().signOut().catch(() => null).then(() => location.reload());
+  }
+  // Şifre sıfırlama istekleri (giriş yapmadan gönderilir; yalnızca yönetim okur)
+  function applyResetRequests(snap){
+    passwordResetRequests.length = 0;
+    snap.forEach(doc => { const d = desanitizeFromFirestore(doc.data() || {}); passwordResetRequests.push({ phone: d.phone, date: d.date, code: d.code, _rid: doc.id }); });
+  }
+  function removeResetRequestDoc(req){
+    if(secureMode && req && req._rid) db.collection('reset_requests').doc(req._rid).delete().catch(() => null);
+  }
+
+  // Oturum açıkken (ya da giriş yapınca) çağrılır: yetkiyi okur, veriyi yükler, ekranı açar
+  async function startSecureSession(typedPassword){
+    const user = firebase.auth().currentUser;
+    if(!user) return false;
+    const uSnap = await db.collection('users').doc(user.uid).get();
+    if(!uSnap.exists){ await firebase.auth().signOut(); return false; }
+    const u = uSnap.data();
+    secureSession = { uid: user.uid, memberId: u.memberId, role: u.role === 'admin' ? 'admin' : 'member' };
+    try{ await loadSecureData(); }
+    catch(err){ console.error('Veri yüklenemedi:', err); secureSession = null; await firebase.auth().signOut(); return false; }
+    const me = members.find(m => m._id === secureSession.memberId);
+    if(!me){ secureSession = null; await firebase.auth().signOut(); return false; }
+    cloudReady = true;
+    startSecureListeners();
+    if(me.role !== 'admin'){
+      if(me.status === 'pending') me.status = 'active';
+      if(typedPassword && me.activationCode && typedPassword === me.activationCode) me.mustSetPassword = true;
+    }
+    if(typedPassword){
+      const now = new Date();
+      db.collection('login_log').add({ uid: user.uid, who: me.name, ok: true, reason: me.role === 'admin' ? 'yönetici' : '', ts: now.getTime(),
+        date: toLocalDateStr(now), time: pad2(now.getHours()) + ':' + pad2(now.getMinutes()) }).catch(() => null);
+    }
+    completeLogin(me);
+    runTimeChecks();
+    return true;
+  }
+  async function secureLogin(phone, password, errorEl){
+    const key = phoneKeyOf(phone);
+    let gen = 0;
+    try{ const idx = await db.collection('login_index').doc(key).get(); if(idx.exists) gen = idx.data().gen || 0; }catch(e){}
+    try{
+      await firebase.auth().signInWithEmailAndPassword(loginEmailFor(key, gen), password);
+    }catch(e){
+      if(e.code === 'auth/too-many-requests') errorEl.textContent = 'Çok fazla hatalı deneme yapıldı. Lütfen bir süre sonra tekrar dene.';
+      else if(e.code === 'auth/network-request-failed') errorEl.textContent = 'Sunucuya bağlanılamadı. İnternet bağlantını kontrol et.';
+      else errorEl.textContent = 'Telefon numarası veya şifre hatalı.';
+      return;
+    }
+    errorEl.textContent = 'Giriş yapılıyor…';
+    const ok = await startSecureSession(password);
+    errorEl.textContent = ok ? '' : 'Bu hesap artık geçerli değil. Salon yönetimiyle iletişime geç.';
+  }
+  async function loadSecureLoginLog(){
+    if(!isSecureAdmin()) return;
+    try{
+      const snap = await db.collection('login_log').orderBy('ts', 'desc').limit(30).get();
+      Object.keys(loginLog).forEach(k => delete loginLog[k]);
+      snap.forEach(doc => { loginLog[doc.id] = desanitizeFromFirestore(doc.data()); });
+      renderLoginLog();
+    }catch(e){ console.error('Giriş kayıtları okunamadı:', e); }
+  }
+
+  // Yapılan derslerin işlenmesi (güvenli mod): yalnızca yönetici cihazı yapar; her üyenin kendi
+  // kayıt belgesinde tek işlemde (transaction) hem yoklama eklenir hem ders hakkı düşülür.
+  async function claimAttendanceSecure(claims){
+    const byMember = {};
+    claims.forEach(c => { (byMember[c.member] = byMember[c.member] || []).push(c); });
+    for(const name of Object.keys(byMember)){
+      const m = members.find(x => x.name === name);
+      if(!m || !m._id) continue;
+      const ref = db.collection('member_admin').doc(m._id);
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const data = snap.exists ? (snap.data() || {}) : {};
+        const existing = data.attendanceLog || {};
+        const fresh = {}; let count = 0;
+        byMember[name].forEach(({ logKey, entry }) => {
+          const sub = logKey.slice(name.length + 1);
+          if(existing[sub] || fresh[sub]) return;
+          fresh[sub] = sanitizeForFirestore(entry); count++;
+        });
+        if(!count) return;
+        tx.set(ref, { attendanceLog: fresh }, { merge: true });
+        if(data.memberPackages) tx.update(ref, new firebase.firestore.FieldPath('memberPackages', 'used'), firebase.firestore.FieldValue.increment(count));
+      });
+    }
+  }
+
+  // ---- Güvenli moda geçiş (tam yetkili yönetici, bir kez) ----
+  async function migrateToSecureMode(adminPassword, onProgress){
+    const say = onProgress || (() => {});
+    if(secureMode) throw new Error('Zaten güvenli modda.');
+    const me = members.find(m => m.role === 'admin' && m.name === currentAdminName);
+    if(!me || adminTrainerScope) throw new Error('Bu işlemi yalnızca tam yetkili yönetici yapabilir.');
+    if(!(await verifyMemberPassword(me, adminPassword))) throw new Error('Yönetici şifresi hatalı.');
+    if(adminPassword.length < MIN_PASSWORD_LENGTH) throw new Error(`Önce yönetici şifreni en az ${MIN_PASSWORD_LENGTH} karakter olacak şekilde değiştir.`);
+    const keys = {};
+    members.forEach(m => {
+      const k = phoneKeyOf(m.phone);
+      if(!k) throw new Error(`${m.name}: telefon numarası / kullanıcı adı boş.`);
+      if(keys[k]) throw new Error(`Aynı telefon numarası iki kayıtta var: ${keys[k]} ve ${m.name}. Önce birini düzelt.`);
+      keys[k] = m.name;
+    });
+    say('Kayıtlar hazırlanıyor…');
+    await flushAllAutosaves();
+    await membersSync.tick();
+    // 1) Herkese giriş hesabı
+    let done = 0;
+    for(const m of members){
+      say(`Giriş hesapları açılıyor… (${++done}/${members.length})`);
+      const isMe = m === me;
+      const pw = isMe ? adminPassword : randomTempCode();
+      try{ await provisionMemberAccount(m, pw); }
+      catch(err){
+        if(err && err.code === 'auth/operation-not-allowed') throw new Error('Firebase konsolunda "E-posta/Şifre" giriş yöntemi açık değil. Önce onu aç, sonra tekrar dene.');
+        throw err;
+      }
+      if(!isMe){ m.activationCode = pw; m.mustSetPassword = true; }
+    }
+    // 2) Veriyi kişiye özel belgelere yaz
+    say('Veriler kişiye özel kayıtlara taşınıyor…');
+    secureMode = true;
+    secureSession = { uid: me.uid, memberId: me._id, role: 'admin' };
+    appDataSyncs['state_leaderboardShared'] = createDocSync(db.collection('app_data').doc('state_leaderboardShared'), leaderboardShared, 'object', 'leaderboardShared');
+    ensureMemberSyncs();
+    recomputeMemberAnnouncements();
+    updateLeaderboardSnapshot();
+    await flushAllAutosaves();
+    // 3) Bundan sonra açılan her cihaz güvenli modda başlasın
+    await db.collection('config').doc('public').set({ secure: true, v: 3, date: toLocalDateStr(new Date()) });
+    // 4) Bu cihazda yönetici olarak oturum aç
+    say('Oturum açılıyor…');
+    const myIdx = await db.collection('login_index').doc(phoneKeyOf(me.phone)).get();
+    await firebase.auth().signInWithEmailAndPassword(loginEmailFor(phoneKeyOf(me.phone), myIdx.exists ? (myIdx.data().gen || 0) : 0), adminPassword);
+    try{ localStorage.removeItem('ttf_session'); }catch(e){}
+    return members.filter(m => m !== me).map(m => ({ name: m.name, phone: m.phone, code: m.activationCode }));
+  }
+
+  function renderSecureModeCard(){
+    const card = document.getElementById('secureModeCard');
+    if(!card) return;
+    card.style.display = adminTrainerScope ? 'none' : 'block';
+    const status = document.getElementById('secureModeStatus');
+    const form = document.getElementById('secureModeForm');
+    if(secureMode){
+      status.innerHTML = '✅ <b>Güvenli mod açık.</b> Giriş Firebase üzerinden yapılıyor ve her üyenin verisi kendi kayıtlarında duruyor. Korumanın tam olması için veritabanı kurallarının (firestore.rules, storage.rules) Firebase konsolunda yayınlanmış olması gerekir.';
+      form.style.display = 'none';
+    } else {
+      status.innerHTML = '⚠️ <b>Güvenli mod kapalı.</b> Şu an uygulamayı açan herkes teknik olarak tüm üye verisini okuyabilir. Geçişte her üyeye yeni bir geçici şifre üretilir; üyeler ilk girişte kendi şifresini belirler. Önce Firebase konsolunda <b>Authentication → Sign-in method → E-posta/Şifre</b> yöntemini aç.';
+      form.style.display = 'block';
+    }
+  }
+  function startSecureMigration(){
+    const pw = document.getElementById('secureModePassword').value;
+    const msg = document.getElementById('secureModeMsg');
+    if(!pw){ msg.style.color = '#e2664e'; msg.textContent = 'Yönetici şifreni yaz.'; return; }
+    customConfirm('Güvenli moda geçilecek: tüm üyelere yeni geçici şifre üretilecek ve herkes yeniden giriş yapacak. Bu işlem geri alınamaz. Devam edilsin mi?', async (ok) => {
+      if(!ok) return;
+      const btn = document.getElementById('secureModeBtn');
+      btn.disabled = true; msg.style.color = 'var(--muted)';
+      try{
+        const codes = await migrateToSecureMode(pw, (t) => { msg.textContent = t; });
+        document.getElementById('secureModeForm').style.display = 'none';
+        msg.style.color = 'var(--green)';
+        msg.textContent = 'Güvenli moda geçildi. Aşağıdaki geçici şifreleri üyelere ilet (üye kartlarında da görünür).';
+        const box = document.getElementById('secureModeCodes');
+        box.style.display = 'block';
+        box.innerHTML = codes.map(c => `<div style="display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:12px;"><span>${escapeHtml(c.name)} <span style="color:var(--muted);">${escapeHtml(c.phone)}</span></span><b style="color:var(--brass); letter-spacing:1px;">${escapeHtml(c.code)}</b></div>`).join('')
+          + '<button class="btn btn-brass btn-full" style="margin-top:12px;" onclick="location.reload()">Tamam, devam et</button>';
+      }catch(err){
+        console.error('Güvenli moda geçilemedi:', err);
+        msg.style.color = '#e2664e';
+        msg.textContent = 'Geçiş tamamlanamadı: ' + (err && err.message ? err.message : err);
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // Açılışta hangi düzende çalışılacağını belirler: herkese açık küçük bir ayar belgesi okunur
+  async function detectSecureMode(){
+    const read = async () => { const snap = await db.collection('config').doc('public').get(); return !!(snap.exists && snap.data().secure); };
+    try{ return await read(); }
+    catch(e){ return false; } // eski kurallar giriş yapmadan okumaya izin vermiyorsa: eski düzen
+  }
+
+
   let knownStateFields = null;
   let allStateRefs = []; // [veri, alan adı, tür] — hesap silme gibi toplu işlemler için
   // Eski tek belgede bu sürümün tanımadığı alanlar olabilir (örn. eski ortak bildirim listesi) — onlara dokunma
@@ -2238,7 +2806,13 @@
 
   async function initFirebaseAndLoadData(){
     try{
-      await firebase.auth().signInAnonymously();
+      secureMode = await detectSecureMode();
+      if(!secureMode){
+        await firebase.auth().signInAnonymously().catch(() => null);
+        // Eski kurallar giriş yapmadan okumaya izin vermiyor olabilir: bir kez de girişten sonra bak
+        if(await detectSecureMode()){ secureMode = true; await firebase.auth().signOut(); }
+      }
+      if(secureMode) return await initSecureMode();
       const [membersSnap, trainersSnap] = await Promise.all([
         db.collection('members').get(),
         db.collection('trainers').get()
@@ -2303,6 +2877,7 @@
         [consentRecords, 'consentRecords', 'object'],
         [loginLog, 'loginLog', 'object'],
         [loginLocks, 'loginLocks', 'object'],
+        [memberAnnouncements, 'memberAnnouncements', 'object'],
         [appMeta, 'appMeta', 'object'],
         [mealResetMonth, 'mealResetMonth', 'object'],
       ];
@@ -2410,6 +2985,16 @@
       console.error('Firebase yüklenemedi:', err);
       showCloudError('Sunucuya bağlanılamadı. İnternet bağlantını kontrol edip sayfayı yenile.');
     }
+  }
+
+  // Güvenli modda açılış: oturum açıksa veriyi yükle, değilse yalnızca giriş ekranını göster
+  // (giriş yapılmadan cihaza hiçbir üye verisi indirilmez).
+  async function initSecureMode(){
+    clearStateForSecureLoad(); // örnek/varsayılan veriler dahil, giriş yapılana kadar bellekte üye verisi bulunmasın
+    const user = await new Promise(resolve => { const off = firebase.auth().onAuthStateChanged(u => { off(); resolve(u); }); });
+    if(user && user.isAnonymous){ await firebase.auth().signOut(); }
+    else if(user){ await startSecureSession(null); }
+    hideCloudLoading();
   }
 
   // Kayıt sürerken sayfa kapatılır/yenilenirse tarayıcı uyarsın (masaüstünde çalışır, bazı
@@ -3273,7 +3858,7 @@
   function checkLeaderboardSeasonReset(){
     const now = getNow();
     const todayStr = toLocalDateStr(now);
-    if(!cloudReady) return;
+    if(!cloudReady || isSecureMember()) return;
     if(!leaderboardSeasonStart){ leaderboardSeasonStart = todayStr; appMeta.leaderboardSeasonStart = todayStr; return; }
     const start = new Date(leaderboardSeasonStart);
     const monthsPassed = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
@@ -3321,8 +3906,7 @@
     const el = document.getElementById('leaderboardList');
     const pointsEl = document.getElementById('myPointsLabel');
     if(!el) return;
-    const realMembers = members.filter(m => m.role !== 'admin');
-    const ranked = realMembers.map(m => ({ name: m.name, points: getSeasonPoints(m.name) })).sort((a,b) => b.points - a.points);
+    const ranked = getLeaderboardRows().sort((a,b) => b.points - a.points);
     if(pointsEl){
       const mine = ranked.find(r => r.name === currentMemberName);
       pointsEl.textContent = mine ? `${mine.points} puan` : '0 puan';
@@ -3333,7 +3917,7 @@
     const myRankIdx = ranked.findIndex(r => r.name === currentMemberName);
 
     function rowHtml(r, i){
-      const displayName = maskName(r.name);
+      const displayName = r.masked ? r.name : maskName(r.name);
       return `
       <div class="roster-row" style="${r.name===currentMemberName ? 'background:var(--brass-soft); border-radius:8px; padding-left:8px; padding-right:8px;' : ''}">
         <span>${i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'.'} ${displayName}${r.name===currentMemberName ? ' (Sen)' : ''}</span>
@@ -3782,6 +4366,11 @@
   async function claimAttendanceBatch(claims){
     if(attendanceClaimInFlight || !claims.length) return;
     attendanceClaimInFlight = true;
+    if(secureMode){
+      try{ await flushAllAutosaves(); await claimAttendanceSecure(claims); }
+      finally{ attendanceClaimInFlight = false; }
+      return;
+    }
     const logRef = db.collection('app_data').doc(legacyStorageMode ? 'appState' : 'state_attendanceLog');
     const pkgRef = db.collection('app_data').doc('memberPackages');
     try{
@@ -3814,6 +4403,7 @@
 
   function runAutoAttendance(){
     if(!cloudReady) return;
+    if(isSecureMember()) return; // güvenli modda yoklamayı yalnızca yönetici cihazı işler
     const now = getNow();
     const todayStr = toLocalDateStr(now);
     const thisMonday = getWeekMonday(todayStr);
@@ -5100,6 +5690,12 @@
     currentAdminName = null;
     document.getElementById('forcedPasswordOverlay').style.display = 'none';
     try{ localStorage.removeItem('ttf_session'); }catch(e){}
+    if(secureMode){
+      // Oturumu kapat ve sayfayı yenile: bellekteki tüm veri ve canlı dinleyiciler temizlensin
+      document.getElementById('cloudLoadingOverlay').style.display = 'flex';
+      flushAllAutosaves().catch(() => null).then(() => firebase.auth().signOut()).catch(() => null).then(() => location.reload());
+      return;
+    }
     document.getElementById('member-app').style.display = 'none';
     document.getElementById('admin-app').style.display = 'none';
     document.getElementById('logged-out-screen').style.display = 'flex';
@@ -5125,6 +5721,14 @@
     const phone = document.getElementById('forgotPhoneInput').value.trim();
     if(!phone){ alert('Lütfen telefon numaranı gir.'); return; }
     const code = String(Math.floor(100000 + Math.random()*900000));
+    if(secureMode){
+      // Giriş yapılmadığı için yalnızca "istek bırakma" yetkisi var; listeyi yalnızca yönetim okur
+      const now = new Date();
+      db.collection('reset_requests').add({ phone: phone.slice(0, 30), date: toLocalDateStr(now), code, ts: now.getTime() }).catch(err => console.error('İstek gönderilemedi:', err));
+      document.getElementById('forgotPasswordForm').style.display = 'none';
+      document.getElementById('forgotPasswordSuccess').style.display = 'block';
+      return;
+    }
     // Aynı numara için tek istek tutulur ve liste en fazla 50 kayıtla sınırlıdır
     // (biri art arda istek göndererek kaydı şişiremesin).
     for(let i = passwordResetRequests.length - 1; i >= 0; i--){
@@ -5196,6 +5800,12 @@
     return bytesToHex(bits);
   }
   async function setMemberPassword(member, plain){
+    if(secureMode){
+      // Kendi şifresi: Firebase'de güncellenir. Başkasının şifresi (yönetici): hesap yeniden açılır.
+      if(secureSession && member._id === secureSession.memberId) await firebase.auth().currentUser.updatePassword(plain);
+      else await provisionMemberAccount(member, plain);
+      return;
+    }
     if(!canHashPasswords()){ member.password = plain; return; } // güvenli olmayan (http) ortam: eski davranış
     const salt = bytesToHex(crypto.getRandomValues(new Uint8Array(16)));
     member.pw = { s: salt, i: PW_ITERATIONS, h: await derivePasswordHash(plain, salt, PW_ITERATIONS) };
@@ -5203,6 +5813,13 @@
   }
   async function verifyMemberPassword(member, plain){
     if(!member || typeof plain !== 'string' || !plain) return false;
+    if(secureMode){
+      // Yalnızca giriş yapmış kişinin kendi şifresi doğrulanabilir (Firebase yeniden doğrular)
+      const user = firebase.auth().currentUser;
+      if(!user || !secureSession || member._id !== secureSession.memberId) return false;
+      try{ await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email, plain)); return true; }
+      catch(e){ return false; }
+    }
     if(member.pw && member.pw.h){
       if(!canHashPasswords()) return false;
       return (await derivePasswordHash(plain, member.pw.s, member.pw.i || PW_ITERATIONS)) === member.pw.h;
@@ -5218,6 +5835,7 @@
     return bytesToHex(digest).slice(0, 40);
   }
   async function saveSession(member){
+    if(secureMode) return; // oturumu Firebase yönetir
     try{ localStorage.setItem('ttf_session', JSON.stringify({ phone: member.phone, t: await sessionTokenFor(member) })); }catch(e){}
   }
   const MIN_PASSWORD_LENGTH = 6;
@@ -5248,6 +5866,7 @@
       errorEl.textContent = 'Lütfen telefon numarası ve şifreni gir.';
       return;
     }
+    if(secureMode){ await secureLogin(phone, password, errorEl); return; }
     const lock = getLoginLock();
     if(lock.until && lock.until > Date.now()){
       const mins = Math.ceil((lock.until - Date.now()) / 60000);
@@ -5314,15 +5933,20 @@
     document.getElementById('forcedPasswordMsg').textContent = '';
   }
   async function saveForcedPassword(){
-    const me = members.find(m => m.name === currentMemberName);
+    const me = members.find(m => m.name === (currentAdminName || currentMemberName));
     const p1 = document.getElementById('forcedPassword1').value;
     const p2 = document.getElementById('forcedPassword2').value;
     const msgEl = document.getElementById('forcedPasswordMsg');
     if(!me) return;
     if(p1.length < MIN_PASSWORD_LENGTH){ msgEl.textContent = `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`; return; }
     if(p1 !== p2){ msgEl.textContent = 'Şifreler birbiriyle uyuşmuyor.'; return; }
-    if(p1 === me.activationCode || await verifyMemberPassword(me, p1)){ msgEl.textContent = 'Yeni şifren, sana verilen koddan/şifreden farklı olmalı.'; return; }
-    await setMemberPassword(me, p1);
+    if(p1 === me.activationCode || (!secureMode && await verifyMemberPassword(me, p1))){ msgEl.textContent = 'Yeni şifren, sana verilen koddan/şifreden farklı olmalı.'; return; }
+    try{ await setMemberPassword(me, p1); }
+    catch(err){
+      console.error('Şifre kaydedilemedi:', err);
+      msgEl.textContent = (err && err.code === 'auth/requires-recent-login') ? 'Güvenlik için çıkış yapıp tekrar giriş yapman gerekiyor.' : 'Şifre kaydedilemedi, tekrar dene.';
+      return;
+    }
     delete me.mustSetPassword;
     delete me.activationCode;
     await saveSession(me);
@@ -5342,6 +5966,7 @@
       adminTrainerScope = found.adminScope === 'own' ? found.trainerScope : null;
       memberSessionActive = false;
       currentAdminName = found.name;
+      if(found.mustSetPassword) showForcedPasswordOverlay(); // geçici şifreyle giren yönetici de kendi şifresini belirler
       document.getElementById('member-app').style.display = 'none';
       document.getElementById('admin-app').style.display = 'contents';
       renderPriceForm(); renderConsumption(); renderAdminAvailability(); renderAdminMeals(); renderProgramForm(); renderAssignedPrograms(); renderEditMemberForm(); renderAttendanceLog(); renderMemberProfiles(); renderSystemClock(); initSystemClockInput(); renderMealReminderForm(); renderAnalytics(); renderAnnounceForm(); renderProgressAdminMemberSelect(); setFinanceType('income'); renderFinance(); toggleFinanceTabVisibility(); renderAdminHome(); checkAdminBirthdayAlert();
@@ -5478,7 +6103,8 @@
     let phoneChanged = false;
     if(phone){
       const meObj = members.find(x => x.name === currentMemberName);
-      if(meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
+      // Güvenli modda telefon aynı zamanda giriş kimliğidir; yalnızca yönetim değiştirebilir
+      if(!secureMode && meObj && normalizePhone(meObj.phone) !== normalizePhone(phone)){
         meObj.phone = phone;
         phoneChanged = true;
         saveSession(meObj);
@@ -5529,8 +6155,19 @@
     members.splice(idx, 1);
     try{ ['notifs', 'dismissed'].forEach(kind => localStorage.removeItem('ttf_' + kind + '_' + name)); localStorage.removeItem('ttf_onboarded_' + name); }catch(e){}
 
-    await flushAllAutosaves();
-    if(membersSync && member._id) await membersSync.deleteDoc(member._id);
+    if(secureMode && member._id){
+      // Üyenin tüm belgelerini ve giriş yetkisini sil (yetki belgesi en son: üye kendi hesabını siliyorsa
+      // önceki adımlar için hâlâ yetkili olmalı)
+      const selfDelete = !!(secureSession && secureSession.memberId === member._id);
+      disposeMemberSyncs(member._id);
+      await Promise.all(['member_self', 'member_admin', 'member_private'].map(c => db.collection(c).doc(member._id).delete()));
+      if(!selfDelete) await db.collection('login_index').doc(phoneKeyOf(member.phone)).delete().catch(() => null);
+      await membersSync.deleteDoc(member._id);
+      if(member.uid) await db.collection('users').doc(member.uid).delete();
+    } else {
+      await flushAllAutosaves();
+      if(membersSync && member._id) await membersSync.deleteDoc(member._id);
+    }
     // Fotoğraf dosyalarını da sil (biri silinemezse diğerlerine devam et)
     await Promise.all(photoUrls.filter(u => typeof u === 'string' && u.startsWith('http')).map(u => {
       try{ return storage.refFromURL(u).delete().catch(() => null); }catch(e){ return null; }
@@ -5559,6 +6196,7 @@
       memberSessionActive = false;
       await deleteMemberCompletely(name);
       hideDeleteAccountConfirm();
+      if(secureMode){ try{ await firebase.auth().currentUser.delete(); }catch(e){ console.warn('Giriş hesabı silinemedi:', e); } }
       logOut();
       document.getElementById('loginError').textContent = 'Hesabın ve tüm verilerin silindi.';
     }catch(err){
@@ -5784,10 +6422,13 @@
       }
     }
     const created = entries.map(e => {
-      const code = String(Math.floor(100000 + Math.random()*900000));
+      const code = newActivationCode();
       members.push({ name: e.name, water: 0, coffee: 0, waterCredits: 0, coffeeCredits: 0, status: "pending", phone: e.phone, activationCode: code, password: code, role: "member", group: groupName, joinDate: toLocalDateStr(getNow()) });
-      return { name: e.name, phone: e.phone, code };
+      const added = members[members.length - 1];
+      if(secureMode){ delete added.password; added.mustSetPassword = true; }
+      return { name: e.name, phone: e.phone, code, member: added };
     });
+    provisionNewMembers(created.map(c => c.member));
     lastCreatedGroupName = groupName;
 
     renderConsumption();
@@ -5923,7 +6564,10 @@
     if(!req) return;
     const matched = members.find(m => m.role !== 'admin' && normalizePhone(m.phone) === normalizePhone(req.phone));
     if(!matched){ alert('Eşleşen üye bulunamadı.'); return; }
-    await setMemberPassword(matched, req.code);
+    if(secureMode) req.code = randomTempCode();
+    try{ await setMemberPassword(matched, req.code); }
+    catch(err){ console.error(err); alert('Şifre sıfırlanamadı: ' + err.message); return; }
+    removeResetRequestDoc(req);
     matched.activationCode = req.code;
     matched.mustSetPassword = true;
     delete loginLocks[accountLockKey(matched)];
@@ -5932,6 +6576,7 @@
     renderPasswordResetRequests();
   }
   function dismissPasswordReset(idx){
+    removeResetRequestDoc(passwordResetRequests[idx]);
     passwordResetRequests.splice(idx, 1);
     renderPasswordResetRequests();
   }
@@ -6092,6 +6737,8 @@
     renderSystemClock();
     initSystemClockInput();
     renderLoginLog();
+    loadSecureLoginLog();
+    renderSecureModeCard();
     setAdminTopBar('settings', closeAdminSettings);
   }
   function closeAdminSettings(){
@@ -6182,8 +6829,9 @@
       alert('Bu isimde bir üye zaten var.');
       return;
     }
-    const code = String(Math.floor(100000 + Math.random()*900000));
+    const code = newActivationCode();
     members.push({ name, water: 0, coffee: 0, waterCredits: 0, coffeeCredits: 0, status: "pending", phone, activationCode: code, password: code, role: "member", group: groupName || null, joinDate: toLocalDateStr(getNow()) });
+    if(secureMode){ const added = members[members.length - 1]; delete added.password; added.mustSetPassword = true; provisionNewMembers([added]); }
     if(groupName) lastCreatedGroupName = groupName;
 
     let referralMsg = '';
@@ -7219,6 +7867,8 @@
             <button class="btn btn-brass" style="font-size:10.5px; padding:6px 10px; white-space:nowrap;" onclick="adminActivateMember('${m.name}')">Aktive Et</button>
           </div>
           ` : ''}
+          ${m.status !== 'pending' && m.mustSetPassword && m.activationCode ? `
+          <div style="font-size:10.5px; color:var(--muted); margin-bottom:8px;">🔑 Geçici şifre: <b style="color:var(--brass); letter-spacing:1px;">${m.activationCode}</b> — üye ilk girişinde kendi şifresini belirleyecek</div>` : ''}
           <div style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
             <input type="text" id="cardNewPassword-${mi}" class="calc-input" placeholder="Yeni şifre belirle" style="flex:1; font-size:11px; padding:6px 8px; min-width:0;">
             <button class="btn btn-ghost" style="font-size:10.5px; padding:6px 8px; white-space:nowrap;" onclick="adminSetMemberPassword('${m.name}', ${mi})">🔑 Şifreyi Değiştir</button>
@@ -7732,7 +8382,8 @@
     const m = members.find(x => x.name === member);
     if(!m){ alert('Üye bulunamadı.'); return; }
     if(val.length < MIN_PASSWORD_LENGTH){ alert(`Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`); return; }
-    await setMemberPassword(m, val);
+    try{ await setMemberPassword(m, val); }
+    catch(err){ console.error(err); alert('Şifre değiştirilemedi: ' + err.message); return; }
     m.activationCode = val;     // üye bu geçici şifreyle girince kendi şifresini belirlemek zorunda kalır
     m.mustSetPassword = true;
     delete loginLocks[accountLockKey(m)];
@@ -9084,6 +9735,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       if(memberSessionActive){ logOut(); document.getElementById('loginError').textContent = 'Bu hesap silinmiş.'; }
       return; // silinmekte olan hesap için ekranı yeniden çizme (silinen veriyi geri oluşturmasın)
     }
+    syncMemberViewOfAnnouncements();
     const safe = (fn) => { try{ fn(); }catch(e){ console.error('Yenileme hatası:', e); } };
     if(adminVisible){
       [renderPriceForm, renderConsumption, renderAdminAvailability, renderAdminMeals, renderProgramForm, renderAssignedPrograms,
