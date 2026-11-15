@@ -10,7 +10,7 @@
     "ios": "npm run sync && cap open ios"
   },
   "dependencies": {
-    "@capacitor/android": "^7.0.0",
+    "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^7.0.0",
     "@capacitor/ios": "^7.0.0"
   },
