@@ -9,5 +9,10 @@
   "ios": {
     "backgroundColor": "#15171B",
     "contentInset": "never"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#CE997A"
+    }
   }
 }

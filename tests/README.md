@@ -18,4 +18,5 @@ npm run smoke   # üye / tam yetkili admin / kısıtlı admin ekranlarındaki he
 - `secure.test.js` — GÜVENLİ MOD: gerçek Firebase SDK + yerel emülatör + gerçek `firestore.rules`/`storage.rules`; geçiş, üye izolasyonu, yetkisiz erişim denemeleri. Emülatör gerekir:
   `npx firebase-tools@13 emulators:exec --only auth,firestore,storage --project demo-ttfitness "cd tests && node secure.test.js"`
   (`node smoke.test.js member secure` de aynı ortamda çalışır)
+- `notifications.test.js` — su, motivasyon, ödeme, ders, öğün, mesaj/duyuru bildirimleri; izin akışı; ayarlar; mağaza uygulamasında önceden kurulan hatırlatmalar
 - `vendor.test.js` — repodaki gerçek Firebase SDK / jsPDF / fontların yüklendiğini ve CDN isteği kalmadığını doğrular

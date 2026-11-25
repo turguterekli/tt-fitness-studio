@@ -19,6 +19,8 @@ Spor salonu üyelik uygulaması. Arayüz ve yorumlar Türkçe; kullanıcıyla T�
 - `refreshAllViews` — başka cihazdan veri gelince / gün değişince ekranı yeniler
 - `GÜVENLİ MOD` — `secureMode`, `loadSecureData`, `ensureMemberSyncs`, `memberFieldDefs`, `provisionMemberAccount`, `migrateToSecureMode`
 - `SÖZLEŞME · AYDINLATMA · AÇIK RIZA` — `noticeSections`, `consentItems`, `LEGAL_TEXT_VERSION` (metin değişince artır)
+- `BİLDİRİMLER` — `tryBrowserNotification(msg, kategori, tekrarAnahtarı)`, `showSystemNotification` (service worker / yerel bildirim),
+  `buildReminderPlan` + `scheduleNativeReminders` (mağaza uygulamasında önceden kurulan hatırlatmalar), `notifPrefs` (Ayarlar › Bildirimler)
 - Üye ekranları `#view-*`, yönetici ekranları `#admin-view-*`
 
 ## Veri

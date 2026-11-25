@@ -1,7 +1,7 @@
 // Sayfa (HTML) isteklerinde "önce ağ" stratejisi kullanılır: internet varsa her zaman en güncel
 // sürüm gelir, yalnızca çevrimdışıyken önbellekteki kopya gösterilir. Böylece eski sürümün
 // takılı kalması sorunu yaşanmaz.
-const CACHE_NAME = 'tt-fitness-cache-v3';
+const CACHE_NAME = 'tt-fitness-cache-v4';
 const FILES_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -89,6 +89,19 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => cached);
       return cached || fetchPromise;
+    })
+  );
+});
+
+// Bildirime dokununca uygulamayı öne getir (açık değilse aç)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ('focus' in client) return client.focus();
+      }
+      return self.clients.openWindow ? self.clients.openWindow('./index.html') : null;
     })
   );
 });
