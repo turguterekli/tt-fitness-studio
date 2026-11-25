@@ -476,6 +476,18 @@
         <div id="homePackageDates" style="font-size:13px; color:var(--chalk); font-weight:600;"></div>
       </div>
 
+      <div class="card" id="notifPromptCard" style="display:none; margin-bottom:14px; align-items:flex-start; gap:12px; border-color:var(--brass);">
+        <span style="font-size:22px; line-height:1;">🔔</span>
+        <div style="flex:1;">
+          <div style="font-size:13px; font-weight:600; color:var(--chalk); margin-bottom:4px;">Hatırlatmaları aç</div>
+          <div style="font-size:11.5px; color:var(--muted); line-height:1.5; margin-bottom:10px;">Ders saatin, su içme, ödeme günün ve salondan gelen mesajlar için telefonuna bildirim gelsin.</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-brass" style="flex:1; font-size:12px; padding:9px 10px;" onclick="requestNotificationPermission()">İzin ver</button>
+            <button class="btn btn-ghost" style="flex:1; font-size:12px; padding:9px 10px;" onclick="dismissNotifPrompt()">Şimdi değil</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card" id="dailyChecklistCard" style="margin-bottom:14px;">
         <div class="card-label">BUGÜN NE YAPMALIYIM?</div>
         <div id="dailyChecklist"></div>
@@ -1004,6 +1016,14 @@
         </div>
         <button class="btn btn-brass btn-full" style="margin-top:14px;" onclick="saveProfile()">Kaydet</button>
         <div id="profileSaveMsg" style="font-size:12px; color:var(--green); margin-top:8px;"></div>
+      </div>
+
+      <div class="section-title">Bildirimler</div>
+      <div class="card">
+        <div id="notifPermStatus" style="font-size:12px; color:var(--chalk); line-height:1.6;"></div>
+        <button class="btn btn-brass btn-full" id="notifPermBtn" style="display:none; margin-top:12px;" onclick="requestNotificationPermission()">🔔 Bildirimlere izin ver</button>
+        <div style="font-size:11px; color:var(--muted); margin:14px 0 4px;">Hangi hatırlatmaları almak istiyorsun?</div>
+        <div id="notifPrefList"></div>
       </div>
 
       <div class="section-title">Görünüm</div>
@@ -4224,7 +4244,8 @@
         msg = `Paketin ${d} gün içinde bitiyor (${formatDateTrLong(pkg.end)}). Yenilemek için resepsiyona uğra.`;
       }
     }
-    if(!msg && sessionsLeft <= 2 && sessionsLeft >= 0){
+    // Paketi olmayan (ya da sınırsız paketli) üyeye "0 ders hakkın kaldı" uyarısı gitmesin
+    if(!msg && pkg && !pkg.unlimited && sessionsTotal > 0 && sessionsLeft <= 2 && sessionsLeft >= 0){
       msg = `Sadece ${sessionsLeft} ders hakkın kaldı. Paketini yenilemeyi (ödemeni yapmayı) unutma.`;
       isPaymentReminder = true;
     }
@@ -4233,7 +4254,7 @@
       pushNotification('expiry', isPaymentReminder ? '💳' : '⏰', msg);
       if(msg !== lastNotifiedMsg){
         lastNotifiedMsg = msg;
-        tryBrowserNotification(msg);
+        tryBrowserNotification(msg, 'payment');
       }
     } else {
       removeNotificationItem('expiry');
@@ -4241,27 +4262,240 @@
     }
   }
 
-  function tryBrowserNotification(msg){
-    // Aynı bildirim aynı gün içinde (sayfa yenilense bile) ikinci kez gösterilmesin
+  // ==================== BİLDİRİMLER ====================
+  // Üç katman:
+  //  1) Uygulama içi bildirim merkezi (zil) — her zaman.
+  //  2) Telefonun bildirim alanı — uygulama açıkken / yeni kapatılmışken (web ve ana ekran uygulaması).
+  //     Eskiden "new Notification()" kullanılıyordu: Android'de hiç çalışmıyor, iPhone'da güvenilir değil.
+  //     Artık service worker üzerinden gösteriliyor.
+  //  3) Mağaza uygulaması (Android/iOS): hatırlatmalar telefona önceden kurulur; uygulama tamamen
+  //     kapalıyken de zamanında gelir (yerel bildirim).
+  // Üye hangi hatırlatmaları istediğini Ayarlar › Bildirimler'den seçer.
+  const NOTIF_DEFAULTS = { water: true, motivation: true, payment: true, classes: true, meals: true, messages: true };
+  const NOTIF_LABELS = {
+    water: ['💧 Su hatırlatması', 'Günde 4 kez: 10:00, 13:00, 16:00, 19:00'],
+    motivation: ['💪 Motivasyon mesajı', 'Her gün 12:00'],
+    payment: ['💳 Ödeme ve paket hatırlatması', 'Paket bitmeden 3 gün önce, bittiği gün ve gecikince'],
+    classes: ['🔔 Ders hatırlatması', 'Dersten 1 saat önce'],
+    meals: ['🍽️ Öğün hatırlatması', 'Antrenörünün belirlediği saatlerde'],
+    messages: ['💬 Mesaj ve duyurular', 'Salon yönetimi yazdığında'],
+  };
+  const WATER_HOURS = [10, 13, 16, 19];
+  function notifPrefs(){
+    const p = getMemberProfile(currentMemberName);
+    return { ...NOTIF_DEFAULTS, ...((p && p.notif) || {}) };
+  }
+  const isNativeApp = () => !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+  function localNotifs(){
+    if(!isNativeApp()) return null;
+    const C = window.Capacitor;
+    return (C.Plugins && C.Plugins.LocalNotifications) || (typeof C.registerPlugin === 'function' ? C.registerPlugin('LocalNotifications') : null);
+  }
+  // 'granted' | 'denied' | 'default' | 'needs-homescreen' | 'unsupported'
+  async function notificationPermissionState(){
+    const LN = localNotifs();
+    if(LN){
+      try{ const r = await LN.checkPermissions(); return r.display === 'granted' ? 'granted' : r.display === 'denied' ? 'denied' : 'default'; }
+      catch(e){ return 'unsupported'; }
+    }
+    if(typeof Notification === 'undefined'){
+      // iPhone'da web bildirimleri yalnızca "Ana Ekrana Ekle" ile açılan uygulamada çalışır
+      return /iPhone|iPad|iPod/.test(navigator.userAgent) ? 'needs-homescreen' : 'unsupported';
+    }
+    return Notification.permission;
+  }
+  async function requestNotificationPermission(){
+    const LN = localNotifs();
     try{
-      const today = toLocalDateStr(getNow());
-      let seen = JSON.parse(localStorage.getItem('ttf_browser_notifs') || '{}');
-      if(seen.date !== today) seen = { date: today, msgs: [] };
-      const sig = currentMemberName + '|' + msg;
-      if(seen.msgs.includes(sig)) return;
-      seen.msgs.push(sig);
-      localStorage.setItem('ttf_browser_notifs', JSON.stringify(seen));
-    }catch(e){}
+      if(LN){ await LN.requestPermissions(); }
+      else if(typeof Notification !== 'undefined'){ await Notification.requestPermission(); }
+    }catch(e){ console.warn('Bildirim izni istenemedi:', e); }
+    const state = await notificationPermissionState();
+    if(state === 'granted') scheduleNativeReminders();
+    renderNotificationSettings();
+    renderNotifPromptCard();
+    return state;
+  }
+  // Telefonun bildirim alanında gösterir (izin verilmişse). Sessizce başarısız olur.
+  async function showSystemNotification(body, tag){
     try{
-      if(typeof Notification === 'undefined') return;
-      if(Notification.permission === 'granted'){
-        new Notification('TT Fitness', { body: msg });
-      } else if(Notification.permission !== 'denied'){
-        Notification.requestPermission().then(p => {
-          if(p === 'granted') new Notification('TT Fitness', { body: msg });
-        }).catch(()=>{});
+      const LN = localNotifs();
+      if(LN){
+        const perm = await LN.checkPermissions();
+        if(perm.display !== 'granted') return false;
+        await LN.schedule({ notifications: [{ id: 900000 + Math.floor(Math.random() * 90000), title: 'TT Fitness', body, schedule: { at: new Date(Date.now() + 1000) } }] });
+        return true;
       }
-    } catch(e){ /* bildirim desteklenmiyor, sessizce geç */ }
+      if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+      const opts = { body, tag: tag || undefined, icon: 'icon-192.png', badge: 'icon-192.png', lang: 'tr' };
+      if('serviceWorker' in navigator){
+        const reg = await navigator.serviceWorker.getRegistration();
+        if(reg){ await reg.showNotification('TT Fitness', opts); return true; }
+      }
+      new Notification('TT Fitness', opts); // service worker yoksa (masaüstü tarayıcı) yedek
+      return true;
+    }catch(e){ return false; }
+  }
+
+  // ---- Mağaza uygulaması: hatırlatmaları önceden kur ----
+  // Kimlik aralıkları: su 1001-1004, öğün 1101-1110, motivasyon 2001-2014, ders 3001-3060, ödeme 4001-4003
+  const NATIVE_ID_MIN = 1000, NATIVE_ID_MAX = 4999;
+  let nativeScheduleTimer = null;
+  function scheduleNativeReminders(){
+    if(!localNotifs()) return;
+    clearTimeout(nativeScheduleTimer);
+    nativeScheduleTimer = setTimeout(() => { doScheduleNativeReminders().catch(e => console.warn('Hatırlatmalar kurulamadı:', e)); }, 800);
+  }
+  // Önümüzdeki günler için kurulacak hatırlatma listesini üretir (test edilebilsin diye ayrı)
+  function buildReminderPlan(now){
+    const prefs = notifPrefs();
+    const out = [];
+    const at = (d) => ({ at: d, allowWhileIdle: true });
+    if(prefs.water) WATER_HOURS.forEach((h, i) => out.push({ id: 1001 + i, body: '💧 Su içmeyi unutma! Günde en az 2 litre su, formda kalmanın en basit yolu.', schedule: { on: { hour: h, minute: 0 }, allowWhileIdle: true } }));
+    if(prefs.meals) (mealReminders[currentMemberName] || []).slice(0, 10).forEach((t, i) => {
+      const [h, m] = String(t).split(':').map(Number);
+      if(Number.isFinite(h) && Number.isFinite(m)) out.push({ id: 1101 + i, body: '🍽️ Öğün eklemeyi unutma! Beslenme sekmesinden ekleyebilirsin.', schedule: { on: { hour: h, minute: m }, allowWhileIdle: true } });
+    });
+    if(prefs.motivation) for(let d = 0; d < 14; d++){
+      const day = new Date(now); day.setDate(day.getDate() + d); day.setHours(12, 0, 0, 0);
+      if(day <= now) continue;
+      const dayOfYear = Math.floor((day - new Date(day.getFullYear(), 0, 0)) / 86400000);
+      out.push({ id: 2001 + d, body: '💪 ' + motivationMessages[dayOfYear % motivationMessages.length], schedule: at(day) });
+    }
+    if(prefs.classes){
+      let n = 0;
+      for(let d = 0; d < 14 && n < 60; d++){
+        const day = new Date(now); day.setDate(day.getDate() + d);
+        const dayIndex = (day.getDay() + 6) % 7;
+        (memberPrograms[currentMemberName] || []).filter(c => c.day === dayIndex).forEach(c => {
+          const [h, m] = String(c.time).split(':').map(Number);
+          const when = new Date(day); when.setHours(h, m, 0, 0); when.setMinutes(when.getMinutes() - 60);
+          if(when > now && n < 60) out.push({ id: 3001 + (n++), body: `🔔 ${c.name} dersin 1 saat sonra (${c.time}) başlıyor — ${c.trainer}.`, schedule: at(when) });
+        });
+      }
+    }
+    const pkg = memberPackages[currentMemberName];
+    if(prefs.payment && pkg && pkg.end){
+      const end = new Date(pkg.end + 'T10:00:00');
+      const dates = [[-3, `💳 Paketin 3 gün sonra (${formatDateTr(pkg.end)}) bitiyor. Yenilemek için ödemeni yapmayı unutma.`],
+                     [0, '💳 Paketin bugün bitiyor. Üyeliğini yenilemek için ödemeni yapmayı unutma.'],
+                     [1, '⚠️ Paketin dün bitti. Üyeliğini yenilemek için lütfen ödemeni yap.']];
+      dates.forEach(([off, body], i) => { const d = new Date(end); d.setDate(d.getDate() + off); if(d > now) out.push({ id: 4001 + i, body, schedule: at(d) }); });
+    }
+    return out;
+  }
+  async function doScheduleNativeReminders(){
+    const LN = localNotifs();
+    if(!LN) return;
+    const perm = await LN.checkPermissions();
+    if(perm.display !== 'granted') return;
+    // Önce bizim kurduğumuz eski hatırlatmaları sil, sonra güncel listeyi kur
+    const pending = await LN.getPending();
+    const ours = (pending.notifications || []).filter(n => n.id >= NATIVE_ID_MIN && n.id <= NATIVE_ID_MAX).map(n => ({ id: n.id }));
+    if(ours.length) await LN.cancel({ notifications: ours });
+    if(!memberSessionActive) return; // çıkış yapıldıysa hiçbir şey kurma
+    const plan = buildReminderPlan(getNow()).map(p => ({ ...p, title: 'TT Fitness' }));
+    if(plan.length) await LN.schedule({ notifications: plan });
+  }
+  async function cancelNativeReminders(){
+    const LN = localNotifs();
+    if(!LN) return;
+    try{
+      const pending = await LN.getPending();
+      const ours = (pending.notifications || []).filter(n => n.id >= NATIVE_ID_MIN && n.id <= NATIVE_ID_MAX).map(n => ({ id: n.id }));
+      if(ours.length) await LN.cancel({ notifications: ours });
+    }catch(e){}
+  }
+
+  // ---- Yeni mesaj / duyuru ----
+  // Salon yönetimi mesaj yazınca ya da yeni duyuru gelince üyeye bildirim gider.
+  function checkIncomingMessages(){
+    if(!memberSessionActive) return;
+    const key = 'ttf_seen_admin_msgs_' + currentMemberName;
+    const count = (memberMessages[currentMemberName] || []).filter(m => m.from === 'admin').length;
+    let seen = null;
+    try{ seen = localStorage.getItem(key); }catch(e){}
+    if(seen === null){ try{ localStorage.setItem(key, String(count)); }catch(e){} return; } // ilk açılış: eskiler için bildirim yok
+    if(count > parseInt(seen, 10)){
+      try{ localStorage.setItem(key, String(count)); }catch(e){}
+      pushNotification('msg-' + count, '💬', 'Salon yönetiminden yeni bir mesajın var.');
+      tryBrowserNotification('💬 Salon yönetiminden yeni bir mesajın var.', 'messages');
+    } else if(count < parseInt(seen, 10)){ try{ localStorage.setItem(key, String(count)); }catch(e){} }
+  }
+  function checkIncomingAnnouncements(mine){
+    const key = 'ttf_seen_announce_' + currentMemberName;
+    let seen = null;
+    try{ seen = JSON.parse(localStorage.getItem(key) || 'null'); }catch(e){}
+    const ids = mine.map(a => a.id);
+    if(seen === null){ try{ localStorage.setItem(key, JSON.stringify(ids)); }catch(e){} return; }
+    const fresh = mine.filter(a => !seen.includes(a.id));
+    if(fresh.length){
+      try{ localStorage.setItem(key, JSON.stringify(ids.slice(-100))); }catch(e){}
+      fresh.slice(-2).forEach(a => tryBrowserNotification('📢 ' + a.message, 'messages'));
+    }
+  }
+
+  // ---- Ayarlar › Bildirimler ----
+  async function renderNotificationSettings(){
+    const list = document.getElementById('notifPrefList');
+    const status = document.getElementById('notifPermStatus');
+    const btn = document.getElementById('notifPermBtn');
+    if(!list || !status || !btn) return;
+    const prefs = notifPrefs();
+    list.innerHTML = Object.keys(NOTIF_LABELS).map(k => `
+      <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:10px 0; border-top:1px solid var(--line);">
+        <input type="checkbox" id="notifPref-${k}" ${prefs[k] ? 'checked' : ''} style="margin-top:2px; width:18px; height:18px; flex-shrink:0;" onchange="setNotifPref('${k}', this.checked)">
+        <span style="font-size:12.5px; color:var(--chalk); line-height:1.5;"><b>${NOTIF_LABELS[k][0]}</b><br><span style="color:var(--muted); font-size:11px;">${NOTIF_LABELS[k][1]}</span></span>
+      </label>`).join('');
+    const state = await notificationPermissionState();
+    const texts = {
+      granted: isNativeApp() ? '✅ Bildirimler açık. Hatırlatmalar uygulama kapalıyken de gelir.' : '✅ Bildirimler açık. Hatırlatmalar uygulama açıkken ya da arka plandayken gelir; telefon uygulamayı tamamen kapattıysa bir sonraki açılışta zilde görünür.',
+      denied: '⛔ Bildirimler telefon ayarlarından kapatılmış. Açmak için telefonun Ayarlar › Bildirimler bölümünden TT Fitness\'a izin ver.',
+      default: 'Hatırlatmaların telefonuna bildirim olarak gelmesi için izin vermen gerekiyor.',
+      'needs-homescreen': 'iPhone\'da bildirim alabilmek için önce uygulamayı ana ekrana ekle: Safari\'de Paylaş › Ana Ekrana Ekle. Sonra oradan açıp bu butona bas.',
+      unsupported: 'Bu tarayıcı bildirim desteklemiyor. Hatırlatmalar uygulama içindeki zil simgesinde görünür.',
+    };
+    status.textContent = texts[state] || texts.unsupported;
+    btn.style.display = state === 'default' ? 'block' : 'none';
+  }
+  function setNotifPref(key, value){
+    const p = getMemberProfile(currentMemberName);
+    p.notif = { ...NOTIF_DEFAULTS, ...(p.notif || {}), [key]: !!value };
+    if(typeof flushAllAutosaves === 'function') flushAllAutosaves();
+    scheduleNativeReminders();
+  }
+  // Ana sayfada bir kez: "Hatırlatmaları açmak ister misin?"
+  async function renderNotifPromptCard(){
+    const card = document.getElementById('notifPromptCard');
+    if(!card) return;
+    let dismissed = false;
+    try{ dismissed = !!localStorage.getItem('ttf_notif_prompt_dismissed_' + currentMemberName); }catch(e){}
+    const state = await notificationPermissionState();
+    card.style.display = (!dismissed && memberSessionActive && state === 'default') ? 'flex' : 'none';
+  }
+  function dismissNotifPrompt(){
+    try{ localStorage.setItem('ttf_notif_prompt_dismissed_' + currentMemberName, '1'); }catch(e){}
+    document.getElementById('notifPromptCard').style.display = 'none';
+  }
+
+  // dedupeKey: aynı metinli ama farklı hatırlatmalar (ör. her saatteki su hatırlatması) ayrı sayılsın diye
+  function tryBrowserNotification(msg, category, dedupeKey){
+    // Üye bu tür hatırlatmayı kapattıysa telefona bildirim gönderme (zilde yine görünür)
+    if(category && memberSessionActive && notifPrefs()[category] === false) return;
+    // Mağaza uygulamasında zamanlanmış hatırlatmalar zaten telefona kurulu; aynısını ikinci kez gösterme
+    if(isNativeApp() && ['water', 'motivation', 'classes', 'payment', 'meals'].includes(category)) return;
+    // Aynı bildirim aynı gün içinde (sayfa yenilense bile) ikinci kez gösterilmesin
+    const today = toLocalDateStr(getNow());
+    const sig = currentMemberName + '|' + (dedupeKey || msg);
+    const readSeen = () => { try{ const v = JSON.parse(localStorage.getItem('ttf_browser_notifs') || '{}'); return v.date === today ? v : { date: today, msgs: [] }; }catch(e){ return { date: today, msgs: [] }; } };
+    if(readSeen().msgs.includes(sig)) return;
+    // İzin burada istenmez (telefonlar, dokunuş olmadan gelen izin isteklerini yok sayıyor);
+    // izin Ayarlar › Bildirimler ya da ana sayfadaki kart üzerinden alınır.
+    // "Gösterildi" kaydı yalnızca bildirim gerçekten gösterilince düşülür (izin yokken harcanmasın)
+    showSystemNotification(msg, category).then(ok => {
+      if(!ok) return;
+      try{ const seen = readSeen(); seen.msgs.push(sig); seen.msgs = seen.msgs.slice(-200); localStorage.setItem('ttf_browser_notifs', JSON.stringify(seen)); }catch(e){}
+    });
   }
 
   // ---- Derse 1 saat kala hatırlatma ----
@@ -4289,7 +4523,7 @@
       pushNotification('classReminder', '🔔', `<b>${match.name}</b> dersin ${match.diffMin} dakika içinde (${match.time}) başlıyor — ${match.trainer}, ${match.room}.`);
       if(!notifiedClassKeys.has(key)){
         notifiedClassKeys.add(key);
-        tryBrowserNotification(`${match.name} dersin ${match.diffMin} dakika içinde başlıyor (${match.time}, ${match.trainer}).`);
+        tryBrowserNotification(`🔔 ${match.name} dersin ${match.diffMin} dakika içinde başlıyor (${match.time}, ${match.trainer}).`, 'classes');
       }
     } else {
       removeNotificationItem('classReminder');
@@ -4356,7 +4590,7 @@
     const now = getNow();
     const todayIndex = (now.getDay() + 6) % 7; // 0 = Pazartesi
     const weekKey = getWeekMonday(toLocalDateStr(now));
-    if(todayIndex === 0 && now.getHours() === 9 && lastWeeklySummaryWeek !== weekKey){
+    if(todayIndex === 0 && now.getHours() >= 9 && lastWeeklySummaryWeek !== weekKey){ // Pazartesi 09:00'dan sonra ilk açılışta
       lastWeeklySummaryWeek = weekKey;
       const mine = (memberPrograms[currentMemberName] || []).slice().sort((a,b) => a.day - b.day);
       if(mine.length){
@@ -4374,13 +4608,17 @@
   function checkWaterReminder(){
     const now = getNow();
     const todayStr = toLocalDateStr(now);
-    if(waterReminderHours.includes(now.getHours())){
-      const slotKey = todayStr + '-' + now.getHours();
+    // Eskiden yalnızca uygulama tam o saatte açıksa çalışıyordu; artık son geçen hatırlatma saatinden
+    // sonraki 3 saat içinde uygulama açılırsa da gösterilir (her saat için günde bir kez).
+    const passedSlots = waterReminderHours.filter(h => h <= now.getHours() && now.getHours() - h < 3);
+    if(passedSlots.length){
+      const slot = passedSlots[passedSlots.length - 1];
+      const slotKey = todayStr + '-' + slot;
       if(!notifiedWaterSlots.has(slotKey)){
         notifiedWaterSlots.add(slotKey);
         const msg = '💧 Su içmeyi unutma! Günde en az 2 litre su, formda kalmanın en basit yolu.';
         pushNotification('water-'+slotKey, '💧', msg);
-        tryBrowserNotification(msg);
+        tryBrowserNotification(msg, 'water', 'water-' + slotKey);
       }
     }
   }
@@ -4389,13 +4627,13 @@
     const now = getNow();
     const todayStr = toLocalDateStr(now);
     // Sabah değil, öğlen saatlerinde (12:00) günde sadece 1 kez otomatik gönderilir
-    if(now.getHours() === 12 && lastMotivationDate !== todayStr){
+    if(now.getHours() >= 12 && lastMotivationDate !== todayStr){ // 12:00'den sonra ilk açılışta, günde bir kez
       lastMotivationDate = todayStr;
       // Gün bazlı sabit bir mesaj seçelim ki aynı gün tekrar kontrol edilince mesaj değişmesin
       const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
       const msg = motivationMessages[dayOfYear % motivationMessages.length];
       pushNotification('motivation-'+todayStr, '💪', msg);
-      tryBrowserNotification(msg);
+      tryBrowserNotification(msg, 'motivation');
     }
   }
 
@@ -4436,7 +4674,7 @@
         const notifyKey = key + '-notify';
         if(!notifiedClassKeys.has(notifyKey)){
           notifiedClassKeys.add(notifyKey);
-          tryBrowserNotification(`${match.name} dersine 2 saatten az kaldı — katılıp katılmayacağını onaylar mısın?`);
+          tryBrowserNotification(`🔔 ${match.name} dersine 2 saatten az kaldı — katılıp katılmayacağını onaylar mısın?`, 'classes');
         }
       }
     } else {
@@ -5915,6 +6153,7 @@
     const genderEl = document.getElementById('settingsGender');
     const phoneEl = document.getElementById('settingsPhone');
     const birthdayEl = document.getElementById('settingsBirthday');
+    renderNotificationSettings();
     const settingsProfile = getMemberProfile(currentMemberName);
     const meObj = members.find(x => x.name === currentMemberName);
     const myConsent = consentRecords[currentMemberName] || {};
@@ -5943,6 +6182,7 @@
   }
   function logOut(){
     memberSessionActive = false;
+    cancelNativeReminders(); // bu cihazdaki hatırlatmaları kaldır (başka biri girebilir)
     currentAdminName = null;
     document.getElementById('forcedPasswordOverlay').style.display = 'none';
     try{ localStorage.removeItem('ttf_session'); }catch(e){}
@@ -6260,6 +6500,8 @@
       switchTab('home', document.querySelector('#member-app .tab[data-view="home"]'));
       maybeShowOnboarding();
     }
+    renderNotifPromptCard();
+    scheduleNativeReminders();
   }
 
   // Sayfa açılışında daha önce kaydedilmiş bir oturum var mı diye bakar; varsa şifre sormadan girer.
@@ -7930,6 +8172,7 @@
     // Bildirim merkezinde artık göstermediğimiz eski duyuruları temizle
     notificationCenterItems = notificationCenterItems.filter(n => !n.id.startsWith('announce-') || mine.some(a => 'announce-'+a.id === n.id));
     mine.forEach(a => pushNotification('announce-'+a.id, '📢', escapeHtml(a.message)));
+    if(memberSessionActive) checkIncomingAnnouncements(announcements.filter(a => isAnnouncementForMe(a, currentMemberName)));
     saveMemberLocalState();
     renderNotificationCenter();
   }
@@ -8627,8 +8870,12 @@
     const dateStr = toLocalDateStr(now);
     const mine = mealReminders[currentMemberName] || [];
     let triggeredTime = null;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
     mine.forEach(t => {
-      if(t === nowTime){
+      // Eskiden yalnızca tam o dakikada uygulama açıksa çalışıyordu; artık sonraki 1 saat içinde de gösterilir
+      const [th, tm] = String(t).split(':').map(Number);
+      const diff = nowMin - (th * 60 + tm);
+      if(diff >= 0 && diff < 60){
         const key = currentMemberName + '|' + dateStr + '|' + t;
         if(!firedMealReminders.has(key)){
           firedMealReminders.add(key);
@@ -8639,7 +8886,7 @@
     if(triggeredTime){
       banner.style.display = 'flex';
       document.getElementById('mealReminderText').textContent = `🍽️ Öğün eklemeyi unutma! (${triggeredTime} hatırlatması)`;
-      tryBrowserNotification('Öğün eklemeyi unutma! Beslenme sekmesinden ekleyebilirsin.');
+      tryBrowserNotification('🍽️ Öğün eklemeyi unutma! Beslenme sekmesinden ekleyebilirsin.', 'meals');
     }
   }
   function dismissMealReminder(){
@@ -10001,7 +10248,7 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       if(memberSessionActive){
         checkClassReminder(); checkClassConfirmation(); checkMealReminder(); checkMonthlyMealReset();
         checkMotivationNotification(); checkWeeklySummary(); checkBirthdayNotification();
-        checkWaterReminder(); checkMealSuggestion();
+        checkWaterReminder(); checkMealSuggestion(); checkIncomingMessages();
       }
     }catch(e){ console.error('Zaman kontrolü hatası:', e); }
     // Gün değiştiyse (uygulama gece boyunca açık kaldıysa ya da ertesi gün arka plandan
@@ -10051,7 +10298,8 @@ Bu belge, ${formatDateTrLong(toLocalDateStr(getNow()))} tarihinde TT Fitness Stu
       [renderDays, renderClasses, renderHomeUpcoming, renderMembership, renderTrainers, renderMyConsumption, renderProgressTracking,
        renderBadges, renderLeaderboard, renderMyAnnouncements, renderPostureGallery, renderMemberMeasurements, renderDailyChecklist,
        renderGoalNote, renderReferralCode, renderClassHistory, renderMonthlyCalendar, renderTrainerNote, renderFixedScheduleSummary,
-       renderMyContractStatus, renderHomePackageDates, renderMeals, renderMyMessageThread, renderNotificationCenter].forEach(safe);
+       renderMyContractStatus, renderHomePackageDates, renderMeals, renderMyMessageThread, renderNotificationCenter, checkIncomingMessages].forEach(safe);
+      scheduleNativeReminders(); // program/paket/öğün saatleri değiştiyse telefondaki hatırlatmalar güncellensin
     }
     saved.forEach(([id, isCheck, val]) => {
       const el = document.getElementById(id);
